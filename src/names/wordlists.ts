@@ -1,27 +1,72 @@
-// Adjective × Noun wordlists for auto-generated agent names like "swift-heron".
-// ~60 × ~70 = ~4200 unique base combinations per project before suffix fallback.
+// Flavor × Dessert wordlists for auto-generated agent names like
+// "Chocolate-Sundae" or "Java-Chip-Ice-Cream-Cake". Multi-word entries
+// are stored pre-hyphenated so combining with a single `-` separator
+// yields a coherent hyphenated name.
 
-export const ADJECTIVES: readonly string[] = [
-  'amber', 'azure', 'bold', 'brave', 'bright', 'brisk', 'calm', 'clever',
-  'cobalt', 'crisp', 'daring', 'dusky', 'eager', 'electric', 'emerald',
-  'fancy', 'fierce', 'frosty', 'gentle', 'golden', 'glossy', 'happy',
-  'hazy', 'humble', 'icy', 'indigo', 'ironic', 'jade', 'jolly', 'jovial',
-  'keen', 'kind', 'lively', 'lucky', 'mellow', 'merry', 'mossy', 'nimble',
-  'noble', 'odd', 'olive', 'plucky', 'proud', 'quick', 'quiet', 'quirky',
-  'rapid', 'resolute', 'rosy', 'silent', 'silver', 'steady', 'swift',
-  'thoughtful', 'tidy', 'tiny', 'upbeat', 'vibrant', 'vivid', 'warm',
-  'witty', 'zealous',
+export const FLAVORS: readonly string[] = [
+  'Chocolate',
+  'Vanilla',
+  'Java-Chip',
+  'Espresso',
+  'Coffee',
+  'Single',
+  'Double',
+  'Triple',
+  'Mint-Chip',
+  'Fudge-Swirl',
+  'Oreo',
+  'Cookie',
+  'Caramel',
+  'Mocha',
+  'Rocky-Road',
+  'Cookie-Dough',
+  'Decaf',
+  'Quad',
 ];
 
-export const NOUNS: readonly string[] = [
-  'badger', 'beaver', 'cheetah', 'chipmunk', 'condor', 'coyote', 'crane',
-  'crow', 'deer', 'dolphin', 'eagle', 'eel', 'egret', 'elk', 'falcon',
-  'finch', 'fox', 'gazelle', 'goose', 'grouse', 'hare', 'hawk', 'heron',
-  'ibis', 'impala', 'jackal', 'jay', 'kestrel', 'koala', 'lark',
-  'lemur', 'loon', 'lynx', 'magpie', 'marlin', 'marmot', 'martin',
-  'moose', 'narwhal', 'newt', 'ocelot', 'orca', 'oriole', 'osprey',
-  'otter', 'owl', 'panda', 'pelican', 'pika', 'puffin', 'quail',
-  'quokka', 'rabbit', 'raccoon', 'raven', 'robin', 'salmon', 'sparrow',
-  'stoat', 'swan', 'tanager', 'tern', 'thrush', 'tortoise', 'vole',
-  'walrus', 'warbler', 'weasel', 'wolf', 'wren', 'yak',
+export const DESSERTS: readonly string[] = [
+  'Sundae',
+  'Milkshake',
+  'Ice-Cream',
+  'Chips-Ahoy',
+  'Amigo',
+  'Black-Forest-Cake',
+  'Ice-Cream-Cake',
+  'Soda',
+  'Biscotti',
+  'Affogato',
+  'Latte',
+  'Cappuccino',
+  'Frappuccino',
+  'Float',
+  'Cone',
+  'Cannoli',
+  'Eclair',
+  'Cupcake',
+  'Brownie',
+];
+
+// Human-readable disambiguator appended when two agents roll the same
+// flavor + dessert combination. After the 19th conflict the generator
+// falls back to a hex suffix — in practice never reached.
+export const NUMBER_WORDS: readonly string[] = [
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
+  'Twenty',
 ];

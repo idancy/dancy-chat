@@ -80,7 +80,7 @@ describe('stdio integration', () => {
           },
         })) as ToolResult,
       );
-      expect(registration.name).toMatch(/^[a-z]+-[a-z]+/);
+      expect(registration.name).toMatch(/^[A-Z][a-z]+(?:-[A-Z][a-z]+)+/);
 
       const list = structured<{ slug: string; agents: Array<{ name: string }> }>(
         (await client.callTool({

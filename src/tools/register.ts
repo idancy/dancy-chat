@@ -2,7 +2,7 @@ import { projectSlug } from '../config.js';
 import { writeExclusive, writeThenRename } from '../fs/atomic.js';
 import { agentFile } from '../fs/paths.js';
 import { readAgents } from '../fs/reader.js';
-import { generateName } from '../names/generate.js';
+import { baseName, disambiguate } from '../names/generate.js';
 import {
   AgentRecord,
   type RegisterInput,
@@ -47,8 +47,9 @@ export const register = async (input: RegisterInput): Promise<RegisterOutput> =>
   }
 
   const now = new Date().toISOString();
-  for (let collisions = 0; collisions < MAX_NAME_ATTEMPTS; collisions++) {
-    const name = generateName(collisions);
+  const base = baseName();
+  for (let n = 0; n < MAX_NAME_ATTEMPTS; n++) {
+    const name = disambiguate(base, n);
     const record: AgentRecord = {
       name,
       task_description,

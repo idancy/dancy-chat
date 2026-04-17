@@ -24,7 +24,9 @@ describe('register', () => {
       project_key: projectKey,
       task_description: 'test agent',
     });
-    expect(result.name).toMatch(/^[a-z]+-[a-z]+(-[0-9a-f]+)?$/);
+    expect(result.name).toMatch(
+      /^[A-Z][a-z]+(?:-[A-Z][a-z]+)+(?:-(?:[A-Z][a-z]+|[0-9a-f]{2}))?$/,
+    );
     expect(result.slug).toBeTruthy();
   });
 

@@ -1,4 +1,5 @@
 import chokidar from 'chokidar';
+import { mkdirSync } from 'node:fs';
 import { useEffect, useRef, useState } from 'react';
 import { projectDir } from '../config.js';
 import { readAgents, readLeases, tailMessages, type NamedLease } from '../fs/reader.js';
@@ -22,6 +23,9 @@ export const useProjectWatch = (
   useEffect(() => {
     cancelledRef.current = false;
     const dir = projectDir(projectKey);
+    // chokidar silently watches nothing if the path doesn't exist when
+    // the watcher starts. Ensure it before arming.
+    mkdirSync(dir, { recursive: true });
 
     const refresh = async (): Promise<void> => {
       if (cancelledRef.current) return;

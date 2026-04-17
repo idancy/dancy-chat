@@ -42,11 +42,16 @@ Add to `~/.claude/settings.json`:
 {
   "mcpServers": {
     "dancy-chat": {
-      "command": "dancy-chat"
+      "command": "/Users/YOU/.local/bin/dancy-chat"
     }
   }
 }
 ```
+
+**Use the absolute path.** Claude Code spawns MCP servers with a
+minimal environment that may not include `~/.local/bin` on PATH, so
+bare `"command": "dancy-chat"` silently fails to resolve. The
+installer prints the exact absolute path on completion.
 
 Restart Claude Code. In a fresh session, ask it to list available MCP
 tools — the six `mcp__dancy-chat__*` tools should appear.

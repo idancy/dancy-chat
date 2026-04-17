@@ -1,0 +1,50 @@
+{
+  "name": "@thedancys/dancy-chat",
+  "version": "0.1.0",
+  "description": "Stdio MCP server and TUI for coordinating parallel Claude Code agents via filesystem-backed messages and leases.",
+  "type": "module",
+  "bin": {
+    "dancy-chat": "./dist/bin.js",
+    "dancy-chat-tui": "./dist/bin-tui.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/bin.ts",
+    "dev:tui": "tsx src/bin-tui.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "chokidar": "^4.0.1",
+    "ink": "^5.0.1",
+    "meow": "^13.2.0",
+    "react": "^18.3.1",
+    "ulid": "^2.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "ink-testing-library": "^4.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thedancys/dancy-chat.git"
+  },
+  "license": "MIT",
+  "author": "Isaac Dancy <isaac@thedancys.com>"
+}

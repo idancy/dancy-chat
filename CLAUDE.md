@@ -64,3 +64,12 @@ npm run typecheck  # tsc --noEmit
 npm run dev        # tsx src/bin.ts (stdio server, for manual piping)
 npm run dev:tui    # tsx src/bin-tui.ts
 ```
+
+## `install.sh` is user-facing
+
+The installer at the repo root runs under `curl … | bash`. Keep it
+short, fail-fast (`set -euo pipefail`), idempotent (re-runnable to
+update), and **non-interactive** — stdin is the piped script, so any
+prompt will hang or misfire. Test changes against a scratch dir via
+`DANCY_CHAT_SRC=/tmp/dancy-chat-install-test bash install.sh` before
+pushing.

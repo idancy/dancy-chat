@@ -16,66 +16,76 @@ agents via filesystem-backed messages and leases. Replacement for
 - **TUI:** `dancy-chat-tui` tails the project directory and renders
   agents / messages / leases live. Read-only.
 
-## Install to Claude Code
+## Install
 
-### 1. Clone and build
+One line, no sudo:
 
 ```bash
-git clone git@github.com:idancy/dancy-chat.git ~/Documents/Code/dancy-chat
-cd ~/Documents/Code/dancy-chat
-npm install
-npm run build
+curl -fsSL https://raw.githubusercontent.com/idancy/dancy-chat/main/install.sh | bash
 ```
 
-### 2. Wire the stdio server into Claude Code
+Requires Node 20+, npm, and git. The installer clones the repo to
+`~/.local/share/dancy-chat`, builds it, and installs `dancy-chat` and
+`dancy-chat-tui` into `~/.local/bin`. Re-run any time to update.
 
-Edit `~/.claude/settings.json` and add Dancy Chat to `mcpServers`:
+Environment overrides:
+
+- `DANCY_CHAT_SRC` — where the source clone lives (default:
+  `~/.local/share/dancy-chat`)
+- `DANCY_CHAT_PREFIX` — where to install bins (default: `~/.local`)
+
+### Wire into Claude Code
+
+Add to `~/.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
     "dancy-chat": {
-      "command": "node",
-      "args": ["/Users/YOU/Documents/Code/dancy-chat/dist/bin.js"]
+      "command": "dancy-chat"
     }
   }
 }
 ```
 
-Substitute your actual absolute path for `/Users/YOU/...`.
+Restart Claude Code. In a fresh session, ask it to list available MCP
+tools — the six `mcp__dancy-chat__*` tools should appear.
 
-### 3. Restart Claude Code
+### Use the TUI
 
-Quit and relaunch. In a new session, ask Claude to list available MCP
-tools; you should see the six Dancy Chat tools
-(`mcp__dancy-chat__register`, `mcp__dancy-chat__send_message`, etc.).
-
-### 4. (Optional) Run the TUI viewer
-
-In a separate terminal, point the TUI at the project directory you want
-to observe:
+In any terminal, point the viewer at the project you want to observe:
 
 ```bash
-node ~/Documents/Code/dancy-chat/dist/bin-tui.js \
-  --project /path/to/your/project
+dancy-chat-tui --project /path/to/your/project
 ```
 
-As agents register, send messages, and acquire leases, the panels
-update live. `q` or `Ctrl+C` to exit.
+Agents, messages, and leases update live as Claude sessions coordinate.
+`q` or `Ctrl+C` to exit.
 
-Set `DANCY_CHAT_DIR` consistently across the TUI and the Claude session
-if you want to keep demo state out of your real `~/.dancy-chat/`.
-
-## Run the demo
-
-```bash
-DANCY_CHAT_DIR=/tmp/dancy-chat-demo \
-  npx tsx scripts/demo.ts
-```
+## Demo
 
 Three simulated agents exchange ~16 messages across several threads,
-with a lease-contention scene and a mid-task failure/recovery. Run the
-TUI with the same `DANCY_CHAT_DIR` in another terminal to watch live.
+including lease contention and a mid-task failure and recovery:
+
+```bash
+# terminal 1 — viewer
+DANCY_CHAT_DIR=/tmp/dancy-chat-demo dancy-chat-tui --project /tmp/demo
+
+# terminal 2 — driver
+DANCY_CHAT_DIR=/tmp/dancy-chat-demo \
+  npx tsx ~/.local/share/dancy-chat/scripts/demo.ts
+```
+
+## Install from source (for development)
+
+```bash
+git clone git@github.com:idancy/dancy-chat.git
+cd dancy-chat
+npm install
+npm run build
+npm link     # alternative to install.sh; symlinks ./dist/ so rebuilds
+             # take effect without reinstalling
+```
 
 ## Develop
 

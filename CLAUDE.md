@@ -20,6 +20,29 @@ only — other repos still require explicit approval.
 
 Pushes to `origin` are still gated: confirm before `git push`.
 
+### Batch during iteration, don't commit every tweak
+
+Not every change deserves its own commit. When we're iterating on a
+visual, UX, or content detail — TUI layout, message ordering, demo
+pacing, text copy — hold commits and batch them into one "iteration
+pass" commit at a natural resting point, not after each tweak. The
+log should tell the story of the work, not replay every keystroke.
+
+**Commit promptly:**
+- new feature module
+- bugfix with a clear cause
+- schema or API change
+- test coverage added
+- anything another contributor would want as a clean point to revert to
+
+**Hold and batch:**
+- visual polish loops ("try bigger padding… now smaller… now no border")
+- demo content tuning (copy, pacing, count of examples)
+- repeated explore-and-adjust cycles on the same surface
+
+When in doubt, ask. "Commit now or keep iterating?" is always a
+reasonable check-in.
+
 ## Hard rules
 
 - **stdout is the MCP transport.** Never `console.log` from any code path

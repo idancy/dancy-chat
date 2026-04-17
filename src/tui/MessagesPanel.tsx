@@ -10,15 +10,9 @@ const formatTime = (iso: string): string => {
   return `${hh}:${mm}:${ss}`;
 };
 
-const lineCount = (body: string): number => {
-  if (!body) return 0;
-  return body.split('\n').length;
-};
-
-const preview = (body: string, maxLen = 80): string => {
-  const firstLine = body.split('\n')[0] ?? '';
-  if (firstLine.length <= maxLen) return firstLine;
-  return `${firstLine.slice(0, maxLen - 1)}…`;
+const bodyLines = (body: string): string[] => {
+  if (!body) return [];
+  return body.split('\n');
 };
 
 type Props = {
@@ -26,16 +20,20 @@ type Props = {
   limit?: number;
 };
 
-export const MessagesPanel = ({ messages, limit = 30 }: Props): React.ReactElement => {
+export const MessagesPanel = ({ messages, limit = 4 }: Props): React.ReactElement => {
   const tail = messages.slice(-limit);
+  const hidden = messages.length - tail.length;
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} flexGrow={1}>
-      <Text bold>MESSAGES ({messages.length})</Text>
+      <Text bold>
+        MESSAGES ({messages.length}
+        {hidden > 0 ? `, showing last ${tail.length}` : ''})
+      </Text>
       {tail.length === 0 ? (
         <Text dimColor>no messages yet</Text>
       ) : (
         tail.map((m) => {
-          const lines = lineCount(m.body);
+          const lines = bodyLines(m.body);
           return (
             <Box key={m.msg_id} flexDirection="column" marginTop={1}>
               <Box>
@@ -45,12 +43,16 @@ export const MessagesPanel = ({ messages, limit = 30 }: Props): React.ReactEleme
                 <Text dimColor>{' → '}</Text>
                 <Text color="cyan">{m.to}</Text>
               </Box>
-              <Text>
-                <Text bold>"{m.subject}"</Text>
-                <Text dimColor>{lines > 0 ? ` (${lines} line${lines === 1 ? '' : 's'})` : ''}</Text>
-              </Text>
-              {preview(m.body) !== '' && (
-                <Text dimColor>  {preview(m.body)}</Text>
+              <Text bold>"{m.subject}"</Text>
+              {lines.length > 0 && (
+                <Box flexDirection="column">
+                  {lines.map((line, i) => (
+                    <Text key={i} dimColor>
+                      {'  '}
+                      {line === '' ? ' ' : line}
+                    </Text>
+                  ))}
+                </Box>
               )}
             </Box>
           );

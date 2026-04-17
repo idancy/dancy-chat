@@ -15,6 +15,11 @@ agents via filesystem-backed messages and leases. Replacement for
   `list_agents`, `acquire_lease`, `release_lease`. No MCP resources.
 - **TUI:** `dancy-chat-tui` tails the project directory and renders
   agents / messages / leases live. Read-only.
+- **Ephemeral by default:** on session end (stdin EOF / SIGTERM /
+  SIGINT) the server tears down every agent it registered —
+  releases their leases, drops their inbox, and when the last
+  agent out leaves, removes the whole project slug directory.
+  `~/.dancy-chat/` self-cleans for graceful Claude Code exits.
 
 ## Install
 

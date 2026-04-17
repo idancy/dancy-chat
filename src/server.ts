@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { addRegistration } from './lifecycle.js';
 import {
   AcquireLeaseInput,
   ListAgentsInput,
@@ -14,6 +15,16 @@ import { receiveMessages } from './tools/receiveMessages.js';
 import { register } from './tools/register.js';
 import { releaseLease } from './tools/releaseLease.js';
 import { sendMessage } from './tools/sendMessage.js';
+
+// Side-effecting wrapper: after a successful registration, remember
+// it so the EOF shutdown handler can tear it down.
+const trackedRegister = async (
+  input: RegisterInput,
+): Promise<{ name: string; slug: string }> => {
+  const result = await register(input);
+  addRegistration({ project_key: input.project_key, agent_name: result.name });
+  return result;
+};
 
 const asToolResult = <T>(result: T) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
@@ -54,7 +65,7 @@ export const createServer = (): McpServer => {
         'Register a new agent in this project, or reconnect an existing session. Returns the agent name and project slug.',
       inputSchema: RegisterInput.shape,
     },
-    wrap(register),
+    wrap(trackedRegister),
   );
 
   server.registerTool(

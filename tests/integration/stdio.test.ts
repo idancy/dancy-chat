@@ -20,6 +20,20 @@ const structured = <T>(result: ToolResult): T => {
   return JSON.parse(text) as T;
 };
 
+const waitForProcessExit = async (pid: number, timeoutMs = 3000): Promise<boolean> => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((r) => setTimeout(r, 25));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ESRCH') return true;
+      throw err;
+    }
+  }
+  return false;
+};
+
 const makeClient = async (dir: string): Promise<{ client: Client; close: () => Promise<void> }> => {
   const transport = new StdioClientTransport({
     command: 'node',
@@ -172,6 +186,91 @@ describe('stdio integration', () => {
       expect(winners).toHaveLength(1);
     } finally {
       await Promise.all(sessions.map((s) => s.close()));
+    }
+  });
+
+  test('session teardown: closing the client wipes agents, leases, messages, and empty project dir', async () => {
+    const session = await makeClient(dir);
+    const pid = (
+      (session.client as unknown as { transport: { pid: number | undefined } })
+        .transport.pid
+    );
+    try {
+      const alice = structured<{ name: string; slug: string }>(
+        (await session.client.callTool({
+          name: 'register',
+          arguments: { project_key: projectKey, task_description: 'alice' },
+        })) as ToolResult,
+      );
+      await session.client.callTool({
+        name: 'acquire_lease',
+        arguments: {
+          project_key: projectKey,
+          name: 'ports/8080',
+          holder: alice.name,
+          ttl_s: 60,
+        },
+      });
+      await session.client.callTool({
+        name: 'send_message',
+        arguments: {
+          project_key: projectKey,
+          from: alice.name,
+          to: alice.name,
+          subject: 'self',
+          body: 'hi me',
+        },
+      });
+      await session.client.callTool({
+        name: 'receive_messages',
+        arguments: { project_key: projectKey, agent_name: alice.name },
+      });
+
+      const slugDir = join(dir, 'projects', alice.slug);
+      await fs.access(slugDir); // sanity: exists before teardown
+    } finally {
+      await session.close();
+    }
+
+    if (pid) await waitForProcessExit(pid);
+
+    // Entire project slug is gone: alice was the only registered agent.
+    const projects = await fs.readdir(join(dir, 'projects')).catch(() => [] as string[]);
+    expect(projects).toEqual([]);
+  });
+
+  test('session teardown: surviving agent keeps project dir alive', async () => {
+    const sessionA = await makeClient(dir);
+    const sessionB = await makeClient(dir);
+    const pidA = (
+      (sessionA.client as unknown as { transport: { pid: number | undefined } })
+        .transport.pid
+    );
+    try {
+      const alice = structured<{ name: string; slug: string }>(
+        (await sessionA.client.callTool({
+          name: 'register',
+          arguments: { project_key: projectKey, task_description: 'alice' },
+        })) as ToolResult,
+      );
+      const bob = structured<{ name: string }>(
+        (await sessionB.client.callTool({
+          name: 'register',
+          arguments: { project_key: projectKey, task_description: 'bob' },
+        })) as ToolResult,
+      );
+
+      await sessionA.close(); // just Alice's session
+      if (pidA) await waitForProcessExit(pidA);
+
+      // Alice's record gone, Bob's survives, project dir intact.
+      const slugDir = join(dir, 'projects', alice.slug);
+      const agentsDir = join(slugDir, 'agents');
+      const remaining = await fs.readdir(agentsDir);
+      expect(remaining.some((f) => f === `${bob.name}.json`)).toBe(true);
+      expect(remaining.some((f) => f === `${alice.name}.json`)).toBe(false);
+    } finally {
+      await sessionB.close();
     }
   });
 

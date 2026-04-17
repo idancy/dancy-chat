@@ -44,7 +44,6 @@ export const useProjectWatch = (
     void refresh();
 
     const watcher = chokidar.watch(dir, {
-      depth: 3,
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 25 },
     });
@@ -59,9 +58,17 @@ export const useProjectWatch = (
 
     watcher.on('all', schedule);
 
+    // Belt-and-suspenders: poll every second in case an fs event is
+    // missed (chokidar + macOS FSEvents can coalesce or drop events
+    // under load). 1s is cheap and bounds staleness.
+    const pollTimer = setInterval(() => {
+      void refresh();
+    }, 1_000);
+
     return () => {
       cancelledRef.current = true;
       if (debounce) clearTimeout(debounce);
+      clearInterval(pollTimer);
       void watcher.close();
     };
   }, [projectKey, messageLimit]);

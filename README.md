@@ -36,22 +36,22 @@ Environment overrides:
 
 ### Wire into Claude Code
 
-Add to `~/.claude/settings.json`:
+Register with the `claude` CLI at user scope (so it's available in
+every project):
 
-```json
-{
-  "mcpServers": {
-    "dancy-chat": {
-      "command": "/Users/YOU/.local/bin/dancy-chat"
-    }
-  }
-}
+```bash
+claude mcp add --scope user dancy-chat "$HOME/.local/bin/dancy-chat"
+claude mcp list   # should show dancy-chat: ✓ Connected
 ```
 
 **Use the absolute path.** Claude Code spawns MCP servers with a
 minimal environment that may not include `~/.local/bin` on PATH, so
-bare `"command": "dancy-chat"` silently fails to resolve. The
-installer prints the exact absolute path on completion.
+bare `"command": "dancy-chat"` silently fails to resolve.
+
+Do NOT put Dancy Chat under `"mcpServers"` in `~/.claude/settings.json`
+— the CLI reads MCP config from `~/.claude.json` (written by
+`claude mcp add`), not the harness settings file. Editing settings.json
+manually has no effect here.
 
 Restart Claude Code. In a fresh session, ask it to list available MCP
 tools — the six `mcp__dancy-chat__*` tools should appear.

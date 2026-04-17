@@ -105,15 +105,10 @@ $(color '1;32' 'Dancy Chat is installed.')
 
 Next steps:
 
-1. Add to ~/.claude/settings.json:
+1. Register with the Claude CLI (user scope so it's always available):
 
-     {
-       "mcpServers": {
-         "dancy-chat": {
-           "command": "dancy-chat"
-         }
-       }
-     }
+     claude mcp add --scope user dancy-chat "$BIN_DIR/dancy-chat"
+     claude mcp list      # should show dancy-chat ✓ Connected
 
 2. Restart Claude Code. In a fresh session, ask it to list tools —
    the six mcp__dancy-chat__* tools should appear.
@@ -121,6 +116,10 @@ Next steps:
 3. (Optional) View coordination state live from any project:
 
      dancy-chat-tui --project /path/to/your/project
+
+Note: do not add dancy-chat under "mcpServers" in
+~/.claude/settings.json manually — the CLI reads MCP config from
+~/.claude.json (written by \`claude mcp add\`), not settings.json.
 
 Source lives at $SRC_DIR. Re-run this installer any time to update:
 

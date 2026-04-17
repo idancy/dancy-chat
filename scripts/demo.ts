@@ -1,18 +1,30 @@
-// Walks through a realistic two-agent coordination flow, then renders
-// the TUI once and prints the frame. Run with:
-//   npx tsx scripts/demo.ts
+// Walks through a realistic two-agent coordination flow.
 //
-// Sets DANCY_CHAT_DIR to a fresh tmp dir so the demo doesn't touch your
-// real ~/.dancy-chat.
+// Two modes:
+//   Fast (tmpdir, rendered-frame, auto-cleanup):
+//     npx tsx scripts/demo.ts
+//   Live (honors existing DANCY_CHAT_DIR, paced, keeps state):
+//     DANCY_CHAT_DIR=/tmp/dancy-chat-demo npx tsx scripts/demo.ts
+//
+// In live mode, run the TUI in another terminal with the same
+// DANCY_CHAT_DIR to watch panels fill up in real time.
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import React from 'react';
 import { render } from 'ink-testing-library';
 
-const dir = mkdtempSync(join(tmpdir(), 'dancy-chat-demo-'));
+const live = Boolean(process.env.DANCY_CHAT_DIR);
+const dir = live
+  ? process.env.DANCY_CHAT_DIR!
+  : mkdtempSync(join(tmpdir(), 'dancy-chat-demo-'));
+if (live) mkdirSync(dir, { recursive: true });
 process.env.DANCY_CHAT_DIR = dir;
+
+const PACE_MS = live ? 900 : 0;
+const pace = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, PACE_MS));
 
 // Imported AFTER env is set so config.rootDir() picks it up.
 const { App } = await import('../src/tui/App.js');
@@ -34,6 +46,7 @@ const lead = await register({
   session_id: 'session-lead-demo',
 });
 line(`name: ${lead.name}  slug: ${lead.slug}`);
+await pace();
 
 section('2. Worker registers');
 const worker = await register({
@@ -42,12 +55,14 @@ const worker = await register({
   session_id: 'session-worker-demo',
 });
 line(`name: ${worker.name}`);
+await pace();
 
 section('3. Worker discovers peers via list_agents');
 const peers = await listAgents({ project_key: projectKey });
 for (const a of peers.agents) {
   line(`• ${a.name} — ${a.task_description}`);
 }
+await pace();
 
 section('4. Worker sends clarifying questions');
 const q = await sendMessage({
@@ -58,6 +73,7 @@ const q = await sendMessage({
   body: '1. Are messages idempotent?\n2. Can a worker hold two leases?\n3. Where do archived messages live?',
 });
 line(`msg_id: ${q.msg_id}`);
+await pace();
 
 section('5. Lead receives the question (non-blocking)');
 const leadInbox = await receiveMessages({ project_key: projectKey, agent_name: lead.name });
@@ -65,6 +81,7 @@ line(`messages pending: ${leadInbox.messages.length}`);
 for (const m of leadInbox.messages) {
   line(`  "${m.subject}" from ${m.from}`);
 }
+await pace();
 
 section('6. Lead replies with answers');
 await sendMessage({
@@ -75,6 +92,7 @@ await sendMessage({
   body: 'Yes, no, and messages/<agent>/archive/. Proceed with the plan.',
   thread_id: q.msg_id,
 });
+await pace();
 
 section('7. Worker receives reply');
 const workerInbox = await receiveMessages({
@@ -84,6 +102,7 @@ const workerInbox = await receiveMessages({
 for (const m of workerInbox.messages) {
   line(`  "${m.subject}" from ${m.from} (thread: ${m.thread_id ?? 'none'})`);
 }
+await pace();
 
 section('8. Worker acquires ports/8080 lease before starting dev server');
 const firstLease = await acquireLease({
@@ -94,6 +113,7 @@ const firstLease = await acquireLease({
 });
 line(`acquired: ${firstLease.acquired}  holder: ${firstLease.holder}`);
 line(`expires: ${firstLease.expires_at}`);
+await pace();
 
 section('9. Lead tries to reserve the same port (should be denied)');
 const contention = await acquireLease({
@@ -105,6 +125,7 @@ const contention = await acquireLease({
 line(
   `acquired: ${contention.acquired}  holder: ${contention.holder} (still ${worker.name === contention.holder ? 'the worker' : 'someone else'})`,
 );
+await pace();
 
 section('10. Worker releases the lease');
 const released = await releaseLease({
@@ -113,6 +134,7 @@ const released = await releaseLease({
   holder: worker.name,
 });
 line(`released: ${released.released}`);
+await pace();
 
 section('11. Acquire another lease so the TUI has something to show');
 await acquireLease({
@@ -121,18 +143,27 @@ await acquireLease({
   holder: lead.name,
   ttl_s: 1200,
 });
+await pace();
 
-section('12. TUI snapshot');
-const { lastFrame, unmount } = render(
-  React.createElement(App, { projectKey }),
-);
-await new Promise((r) => setTimeout(r, 300));
-process.stdout.write('\n');
-process.stdout.write(lastFrame() ?? '(empty)');
-process.stdout.write('\n');
-unmount();
+if (!live) {
+  section('12. TUI snapshot');
+  const { lastFrame, unmount } = render(
+    React.createElement(App, { projectKey }),
+  );
+  await new Promise((r) => setTimeout(r, 300));
+  process.stdout.write('\n');
+  process.stdout.write(lastFrame() ?? '(empty)');
+  process.stdout.write('\n');
+  unmount();
+}
 
 section('done');
-line(`Demo state lives at: ${dir}`);
-line('It will be removed automatically.');
-rmSync(dir, { recursive: true, force: true });
+if (live) {
+  line(`Demo state kept at: ${dir}`);
+  line('Leave your TUI running to keep watching, or:');
+  line(`  rm -rf ${dir}`);
+} else {
+  line(`Demo state was at: ${dir}`);
+  line('Removed.');
+  rmSync(dir, { recursive: true, force: true });
+}

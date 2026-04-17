@@ -21,7 +21,7 @@ type Props = {
 };
 
 export const MessagesPanel = ({ messages, limit = 4 }: Props): React.ReactElement => {
-  const tail = messages.slice(-limit);
+  const tail = messages.slice(-limit).reverse();
   const hidden = messages.length - tail.length;
   return (
     <Box flexDirection="column" paddingX={1} marginTop={1}>

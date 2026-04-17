@@ -35,14 +35,14 @@ export const App = ({ projectKey }: Props): React.ReactElement => {
         </Text>
       </Box>
       <Box>
-        <Box flexDirection="column" width={38} marginRight={1}>
+        <Box flexGrow={1} marginRight={1}>
           <AgentsPanel agents={agents} />
+        </Box>
+        <Box flexGrow={1}>
           <LeasesPanel leases={leases} />
         </Box>
-        <Box flexDirection="column" flexGrow={1}>
-          <MessagesPanel messages={messages} />
-        </Box>
       </Box>
+      <MessagesPanel messages={messages} />
       <Box paddingX={1}>
         <Text dimColor>q quit · Ctrl+C exit</Text>
       </Box>

@@ -24,7 +24,7 @@ export const MessagesPanel = ({ messages, limit = 4 }: Props): React.ReactElemen
   const tail = messages.slice(-limit);
   const hidden = messages.length - tail.length;
   return (
-    <Box flexDirection="column" borderStyle="round" paddingX={1} flexGrow={1}>
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
       <Text bold>
         MESSAGES ({messages.length}
         {hidden > 0 ? `, showing last ${tail.length}` : ''})

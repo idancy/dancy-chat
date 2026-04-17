@@ -18,7 +18,7 @@ type Props = {
 export const LeasesPanel = ({ leases }: Props): React.ReactElement => {
   const now = useNow(1_000);
   return (
-    <Box flexDirection="column" borderStyle="round" paddingX={1} marginTop={1}>
+    <Box flexDirection="column" borderStyle="round" paddingX={1}>
       <Text bold>LEASES ({leases.length})</Text>
       {leases.length === 0 ? (
         <Text dimColor>none held</Text>

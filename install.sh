@@ -69,7 +69,11 @@ BIN_DIR="$BIN_PREFIX/bin"
 mkdir -p "$BIN_PREFIX/lib" "$BIN_DIR"
 
 info "installing bins into $BIN_DIR"
-npm install -g . --silent --no-progress --prefix="$BIN_PREFIX"
+# --install-links is critical: without it, npm symlinks the global
+# package into the source dir. If the user later deletes or moves the
+# source, every bin goes with it. --install-links packs dist/ and
+# copies, so the install is self-contained.
+npm install -g . --silent --no-progress --install-links --prefix="$BIN_PREFIX"
 
 # Verify and, if needed, tell the user how to put BIN_DIR on PATH.
 if [ ! -x "$BIN_DIR/dancy-chat" ] || [ ! -x "$BIN_DIR/dancy-chat-tui" ]; then

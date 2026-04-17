@@ -9,9 +9,10 @@ import {
   type AcquireLeaseOutput,
 } from '../schemas.js';
 
-const buildLease = (holder: string, ttl_s: number): LeaseRecord => {
+const buildLease = (name: string, holder: string, ttl_s: number): LeaseRecord => {
   const now = Date.now();
   return {
+    name,
     holder,
     ttl_s,
     acquired_at_ms: now,
@@ -51,7 +52,7 @@ export const acquireLease = async (
 ): Promise<AcquireLeaseOutput> => {
   const { project_key, name, holder, ttl_s } = input;
   const path = leaseFile(project_key, name);
-  const mine = buildLease(holder, ttl_s);
+  const mine = buildLease(name, holder, ttl_s);
 
   // Fast path: no existing lease.
   const fresh = await tryFreshAcquire(path, mine);

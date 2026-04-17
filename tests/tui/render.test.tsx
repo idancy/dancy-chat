@@ -1,0 +1,87 @@
+import { render } from 'ink-testing-library';
+import { promises as fs, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { App } from '../../src/tui/App.js';
+import { register } from '../../src/tools/register.js';
+import { sendMessage } from '../../src/tools/sendMessage.js';
+import { acquireLease } from '../../src/tools/acquireLease.js';
+import { receiveMessages } from '../../src/tools/receiveMessages.js';
+
+describe('TUI App', () => {
+  let dir: string;
+  const projectKey = '/tmp/fake-project-for-tui-test';
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dancy-chat-tui-'));
+    process.env.DANCY_CHAT_DIR = dir;
+  });
+
+  afterEach(async () => {
+    delete process.env.DANCY_CHAT_DIR;
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  test('renders header and empty state', async () => {
+    const { lastFrame, unmount } = render(
+      React.createElement(App, { projectKey }),
+    );
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('Dancy Chat');
+      expect(frame).toContain('AGENTS');
+      expect(frame).toContain('LEASES');
+      expect(frame).toContain('MESSAGES');
+      expect(frame).toContain('none registered');
+      expect(frame).toContain('none held');
+      expect(frame).toContain('no messages yet');
+    } finally {
+      unmount();
+    }
+  });
+
+  test('renders live state after agents/messages/leases appear', async () => {
+    const alice = await register({
+      project_key: projectKey,
+      task_description: 'alice the lead',
+    });
+    const bob = await register({
+      project_key: projectKey,
+      task_description: 'bob the worker',
+    });
+    await sendMessage({
+      project_key: projectKey,
+      from: alice.name,
+      to: bob.name,
+      subject: 'welcome',
+      body: 'hi bob',
+    });
+    // Receive to move into archive (that's what tailMessages reads)
+    await receiveMessages({ project_key: projectKey, agent_name: bob.name });
+    await acquireLease({
+      project_key: projectKey,
+      name: 'ports/8080',
+      holder: alice.name,
+      ttl_s: 60,
+    });
+
+    const { lastFrame, unmount } = render(
+      React.createElement(App, { projectKey }),
+    );
+    try {
+      await new Promise((r) => setTimeout(r, 300));
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain(alice.name);
+      expect(frame).toContain(bob.name);
+      expect(frame).toContain('alice the lead');
+      expect(frame).toContain('bob the worker');
+      expect(frame).toContain('welcome');
+      expect(frame).toContain('ports/8080');
+    } finally {
+      unmount();
+    }
+  });
+});

@@ -35,19 +35,15 @@ export const readAgents = async (projectKey: string): Promise<Agent[]> => {
 
 export type NamedLease = { name: string; record: Lease };
 
-const leaseNameFromFile = (filename: string): string => filename.replace(/\.json$/, '');
-
 export const readLeases = async (projectKey: string): Promise<NamedLease[]> => {
   const dir = leasesDir(projectKey);
   const filenames = await jsonNames(dir);
   const results = await Promise.all(
-    filenames.map(async (fn) => {
-      const record = await readJsonSafe(join(dir, fn), LeaseRecord);
-      if (!record) return null;
-      return { name: leaseNameFromFile(fn), record } satisfies NamedLease;
-    }),
+    filenames.map((fn) => readJsonSafe(join(dir, fn), LeaseRecord)),
   );
-  return results.filter((r): r is NamedLease => r !== null);
+  return results
+    .filter((r): r is Lease => r !== null)
+    .map((record) => ({ name: record.name, record }));
 };
 
 // Tail the most recent N messages across all agents, drawn from their

@@ -23,6 +23,7 @@ export const MessageRecord = z.object({
 export type MessageRecord = z.infer<typeof MessageRecord>;
 
 export const LeaseRecord = z.object({
+  name: z.string(),
   holder: z.string(),
   ttl_s: z.number().int().positive(),
   acquired_at_ms: z.number().int().nonnegative(),

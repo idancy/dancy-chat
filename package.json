@@ -43,7 +43,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thedancys/dancy-chat.git"
+    "url": "git+https://github.com/idancy/dancy-chat.git"
   },
   "license": "MIT",
   "author": "Isaac Dancy <isaac@thedancys.com>"

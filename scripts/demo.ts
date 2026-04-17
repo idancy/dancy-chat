@@ -1,7 +1,9 @@
-// Walks through a realistic two-agent coordination flow.
+// Walks through a realistic multi-agent coordination session: one Lead,
+// two parallel Workers, ~20 messages across several threads, lease
+// contention, failures and recoveries, epic hand-off.
 //
 // Two modes:
-//   Fast (tmpdir, rendered-frame, auto-cleanup):
+//   Fast (tmpdir, rendered frame, auto-cleanup):
 //     npx tsx scripts/demo.ts
 //   Live (honors existing DANCY_CHAT_DIR, paced, keeps state):
 //     DANCY_CHAT_DIR=/tmp/dancy-chat-demo npx tsx scripts/demo.ts
@@ -22,9 +24,10 @@ const dir = live
 if (live) mkdirSync(dir, { recursive: true });
 process.env.DANCY_CHAT_DIR = dir;
 
-const PACE_MS = live ? 900 : 0;
-const pace = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, PACE_MS));
+const LONG_PACE_MS = live ? 1100 : 0;
+const SHORT_PACE_MS = live ? 400 : 0;
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 // Imported AFTER env is set so config.rootDir() picks it up.
 const { App } = await import('../src/tui/App.js');
@@ -36,176 +39,379 @@ const { releaseLease } = await import('../src/tools/releaseLease.js');
 const { listAgents } = await import('../src/tools/listAgents.js');
 
 const projectKey = '/Users/thedancys/Documents/Code/money';
-const line = (msg: string): void => process.stdout.write(`  ${msg}\n`);
-const section = (title: string): void => process.stdout.write(`\n\x1b[1m▌ ${title}\x1b[0m\n`);
+const log = (msg: string): void => process.stdout.write(`  ${msg}\n`);
+const section = (title: string): void =>
+  process.stdout.write(`\n\x1b[1m▌ ${title}\x1b[0m\n`);
 
-section('1. Lead registers');
+type Message = {
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  thread_id?: string;
+  pace?: 'short' | 'long';
+  flushTo?: string; // receive-archive for this agent after send
+};
+
+const msg = (m: Message): Message => m;
+
+const send = async (m: Message): Promise<string> => {
+  const result = await sendMessage({
+    project_key: projectKey,
+    from: m.from,
+    to: m.to,
+    subject: m.subject,
+    body: m.body,
+    ...(m.thread_id ? { thread_id: m.thread_id } : {}),
+  });
+  log(`${m.from} → ${m.to}: "${m.subject}"`);
+  if (m.flushTo) {
+    await receiveMessages({ project_key: projectKey, agent_name: m.flushTo });
+  }
+  await wait(m.pace === 'short' ? SHORT_PACE_MS : LONG_PACE_MS);
+  return result.msg_id;
+};
+
+section('Registering agents');
 const lead = await register({
   project_key: projectKey,
-  task_description: 'Lead — epic lifecycle manager',
-  session_id: 'session-lead-demo',
+  task_description: 'Lead — epic lifecycle manager (epic/qi4-receive-blocking)',
+  session_id: 'demo-lead',
 });
-line(`name: ${lead.name}  slug: ${lead.slug}`);
-await pace();
+log(`lead:     ${lead.name}`);
+await wait(SHORT_PACE_MS);
 
-section('2. Worker registers');
-const worker = await register({
+const alice = await register({
   project_key: projectKey,
-  task_description: 'Worker — implementing money-qi4',
-  session_id: 'session-worker-demo',
+  task_description: 'Worker — money-qi4 (receive_messages blocking support)',
+  session_id: 'demo-alice',
 });
-line(`name: ${worker.name}`);
-await pace();
+log(`worker A: ${alice.name}`);
+await wait(SHORT_PACE_MS);
 
-section('3. Worker discovers peers via list_agents');
+const bob = await register({
+  project_key: projectKey,
+  task_description: 'Worker — money-30v (E2E test for add-row visibility)',
+  session_id: 'demo-bob',
+});
+log(`worker B: ${bob.name}`);
+await wait(LONG_PACE_MS);
+
+section('Peer discovery');
 const peers = await listAgents({ project_key: projectKey });
-for (const a of peers.agents) {
-  line(`• ${a.name} — ${a.task_description}`);
-}
-await pace();
+for (const a of peers.agents) log(`• ${a.name} — ${a.task_description}`);
+await wait(LONG_PACE_MS);
 
-section('4. Worker sends clarifying questions');
-const q = await sendMessage({
-  project_key: projectKey,
-  from: worker.name,
-  to: lead.name,
-  subject: 'clarifying questions before starting money-qi4',
-  body: [
-    'Before I start on money-qi4 I want to align on a few things that',
-    'the task body did not nail down. Please confirm or correct each.',
-    '',
-    '1. Message delivery semantics.',
-    '   The acceptance criterion says "Lead is notified of completion."',
-    '   Is that notification required to be an exactly-once delivery, or',
-    '   is at-least-once with an idempotent subject sufficient? I am',
-    '   assuming at-least-once since that matches send_message today,',
-    '   but the wording suggests stronger guarantees.',
-    '',
-    '2. Lease overlap.',
-    '   Can a single worker hold two leases simultaneously (e.g. both',
-    '   ports/8080 and workspace/main during an E2E run)? The doc',
-    '   implies yes, but CLAUDE.md does not say so explicitly and I do',
-    '   not want to discover it from a test failure.',
-    '',
-    '3. Archive lifecycle.',
-    '   After receive_messages moves a message to archive/, is that',
-    '   archive permanent, or is there a retention window I need to',
-    '   respect for the E2E test? I did not see a purge flow anywhere.',
-    '',
-    '4. Thread_id semantics.',
-    '   Is thread_id free-form (any string the sender picks) or must it',
-    '   always be a previously seen msg_id? The TUI currently displays',
-    '   whatever the sender set, which is fine either way, but the',
-    '   convention should be documented.',
-    '',
-    'Happy to proceed on my best guesses above if you want me to unblock.',
-    'I will wait for your answer before writing code that depends on',
-    '(1) or (3) since those are hardest to change later.',
-  ].join('\n'),
-});
-line(`msg_id: ${q.msg_id}`);
-await pace();
-
-section('5. Lead receives the question (non-blocking)');
-const leadInbox = await receiveMessages({ project_key: projectKey, agent_name: lead.name });
-line(`messages pending: ${leadInbox.messages.length}`);
-for (const m of leadInbox.messages) {
-  line(`  "${m.subject}" from ${m.from}`);
-}
-await pace();
-
-section('6. Lead replies with answers');
-await sendMessage({
-  project_key: projectKey,
-  from: lead.name,
-  to: worker.name,
-  subject: 're: clarifying questions before starting money-qi4',
-  body: [
-    'Answers in order, cited where I can:',
-    '',
-    '(1) At-least-once with an idempotent subject is what we rely on.',
-    '    send_message has no dedupe — the receiver is responsible for',
-    '    collapsing duplicates by subject + thread_id. packages/shared',
-    '    already has a MessageDedupeKey helper; use it.',
-    '',
-    '(2) Yes, a single worker can hold two leases concurrently. The',
-    '    only constraint is that each named lease has exactly one',
-    '    holder at a time — the CAS is per-name, not per-holder. The',
-    '    /execute workflow already does this during E2E (see the',
-    '    ports/8080 + workspace/main sequence in lead.md).',
-    '',
-    '(3) Archive is permanent for the v0.1 scope. No retention, no',
-    '    purge. The operator rm -rfs manually if they want to trim. If',
-    '    the E2E test needs a clean slate, use a fresh DANCY_CHAT_DIR',
-    '    in a tmpdir rather than trying to purge. We can add a purge',
-    '    tool later if ops asks for it.',
-    '',
-    '(4) Free-form. Senders pick any string. The common convention is',
-    '    to use the originating msg_id so threads chain cleanly in the',
-    '    TUI and in logs, but nothing enforces it. Write a comment in',
-    '    the code where you set it so future readers know.',
-    '',
-    'Proceed with (1) and (3). If (2) surprises you at any point, page',
-    'me before you work around it — that would be the design breaking,',
-    'not your implementation.',
-  ].join('\n'),
-  thread_id: q.msg_id,
-});
-await pace();
-
-section('7. Worker receives reply');
-const workerInbox = await receiveMessages({
-  project_key: projectKey,
-  agent_name: worker.name,
-});
-for (const m of workerInbox.messages) {
-  line(`  "${m.subject}" from ${m.from} (thread: ${m.thread_id ?? 'none'})`);
-}
-await pace();
-
-section('8. Worker acquires ports/8080 lease before starting dev server');
-const firstLease = await acquireLease({
-  project_key: projectKey,
-  name: 'ports/8080',
-  holder: worker.name,
-  ttl_s: 600,
-});
-line(`acquired: ${firstLease.acquired}  holder: ${firstLease.holder}`);
-line(`expires: ${firstLease.expires_at}`);
-await pace();
-
-section('9. Lead tries to reserve the same port (should be denied)');
-const contention = await acquireLease({
-  project_key: projectKey,
-  name: 'ports/8080',
-  holder: lead.name,
-  ttl_s: 600,
-});
-line(
-  `acquired: ${contention.acquired}  holder: ${contention.holder} (still ${worker.name === contention.holder ? 'the worker' : 'someone else'})`,
+section('Kickoff thread — Alice claims money-qi4');
+const kickoff = await send(
+  msg({
+    from: alice.name,
+    to: lead.name,
+    subject: 'starting money-qi4 — quick sanity check',
+    body: [
+      'I am about to claim money-qi4 (block=true support on receive).',
+      '',
+      'Before I do: the task body says "no polling fallback" but the',
+      'TUI has one. I read that as scope-limited to the server tool',
+      'itself, not the viewer. Confirm?',
+      '',
+      'If yes I will start. If no I will loop back on the plan.',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
 );
-await pace();
 
-section('10. Worker releases the lease');
-const released = await releaseLease({
+await send(
+  msg({
+    from: lead.name,
+    to: alice.name,
+    thread_id: kickoff,
+    subject: 're: starting money-qi4 — quick sanity check',
+    body: [
+      'Confirmed — the "no polling" rule is for the MCP tool only. The',
+      'TUI is a read-only viewer and polling there is a UX choice, not',
+      'a correctness one. Proceed.',
+    ].join('\n'),
+    flushTo: alice.name,
+  }),
+);
+
+await send(
+  msg({
+    from: alice.name,
+    to: lead.name,
+    subject: 'plan for money-qi4',
+    body: [
+      'Plan:',
+      '  1. Add block?: boolean and timeout_s?: number to the Zod input.',
+      '  2. Factor current drain path into drain() so both fast and',
+      '     blocking paths share it.',
+      '  3. Add waitForAdd(dir, timeoutMs, signal?) using chokidar with',
+      '     awaitWriteFinish to guard against partial writes on macOS.',
+      '  4. Race add-event (debounced), timeout, abort signal. Post-ready',
+      '     re-scan closes the TOCTOU gap.',
+      '  5. Always await watcher.close() in finally.',
+      '',
+      'Tests: 6 additions in messaging.test — block-returns-fast when',
+      'prefilled, block-unblocks under 100ms on new send, block respects',
+      'timeout, bulk-drain, per-recipient isolation, abort on client close.',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
+);
+
+await send(
+  msg({
+    from: lead.name,
+    to: alice.name,
+    subject: 're: plan for money-qi4',
+    body: [
+      'Plan looks good. One nit: the abort-on-client-close test is hard',
+      'to write reliably — the SDK does not expose the transport signal',
+      'cleanly. Skip it and note the gap in the task body; I will file',
+      'a follow-up. Everything else is fine. Approved, go.',
+    ].join('\n'),
+    flushTo: alice.name,
+  }),
+);
+
+section("Bob's thread — money-30v scope pushback");
+const bobKickoff = await send(
+  msg({
+    from: bob.name,
+    to: lead.name,
+    subject: 'scope question on money-30v',
+    body: [
+      'Looking at money-30v (E2E for add-row visibility). The current',
+      'acceptance criterion is just "add row hidden during account',
+      'switch". But I see two related bugs in adjacent commits',
+      '(money-2n9, money-qi4) — should my test also cover those, or',
+      'stay narrowly on 30v?',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
+);
+
+await send(
+  msg({
+    from: lead.name,
+    to: bob.name,
+    thread_id: bobKickoff,
+    subject: 're: scope question on money-30v',
+    body: [
+      'Stay narrow. 2n9 and qi4 have their own tests and their own tasks.',
+      'If you write one mega-test and any of the three regresses, the',
+      'failure will point at the wrong task. Three focused tests beat one',
+      'kitchen-sink test.',
+    ].join('\n'),
+    flushTo: bob.name,
+  }),
+);
+
+section('Lease contention — port 8080');
+section('(Alice grabs it first)');
+const aliceLease = await acquireLease({
   project_key: projectKey,
   name: 'ports/8080',
-  holder: worker.name,
+  holder: alice.name,
+  ttl_s: 900,
 });
-line(`released: ${released.released}`);
-await pace();
+log(`alice: acquired=${aliceLease.acquired}`);
+await wait(SHORT_PACE_MS);
 
-section('11. Acquire another lease so the TUI has something to show');
-await acquireLease({
+section('(Bob wants it too, gets denied)');
+const bobAttempt = await acquireLease({
   project_key: projectKey,
-  name: 'workspace/main',
-  holder: lead.name,
-  ttl_s: 1200,
+  name: 'ports/8080',
+  holder: bob.name,
+  ttl_s: 900,
 });
-await pace();
+log(`bob:   acquired=${bobAttempt.acquired}  current holder=${bobAttempt.holder}`);
+await wait(SHORT_PACE_MS);
+
+await send(
+  msg({
+    from: bob.name,
+    to: alice.name,
+    subject: 'waiting on ports/8080',
+    body: [
+      `Hey — I need ports/8080 for my E2E run but you are holding it.`,
+      'Ping me when you release? No rush, my task is smaller.',
+    ].join('\n'),
+    flushTo: alice.name,
+  }),
+);
+
+await send(
+  msg({
+    from: alice.name,
+    to: bob.name,
+    subject: 're: waiting on ports/8080',
+    body: [
+      'Maybe 3–5 minutes. I am mid-E2E on the money-qi4 branch. I will',
+      'ping you as soon as I release.',
+    ].join('\n'),
+    flushTo: bob.name,
+  }),
+);
+
+section('Alice hits a failure');
+await send(
+  msg({
+    from: alice.name,
+    to: lead.name,
+    subject: 'E2E failure on money-qi4 — "receive hangs forever"',
+    body: [
+      "Two of six new tests fail on macOS. Symptom: block=true returns",
+      'after the full timeout even when a message was clearly added',
+      'during the wait. Logs show the add event fires in chokidar but',
+      'the debounce timer never resolves.',
+      '',
+      'Suspect: awaitWriteFinish stabilityThreshold is too tight (20ms)',
+      'for FSEvents under test-harness load — the event keeps getting',
+      're-qualified and the debounce keeps resetting. Going to bump to',
+      '50ms and confirm.',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
+);
+
+await send(
+  msg({
+    from: lead.name,
+    to: alice.name,
+    subject: 're: E2E failure on money-qi4',
+    body: [
+      'Your hypothesis matches what Node docs warn about for FSEvents.',
+      'Bumping the threshold is reasonable, but add a comment pointing at',
+      'the macOS-specific rationale so future readers do not "clean it',
+      'up" back to 20ms.',
+    ].join('\n'),
+    flushTo: alice.name,
+  }),
+);
+
+await send(
+  msg({
+    from: alice.name,
+    to: lead.name,
+    subject: 'update — fix confirmed',
+    body: [
+      'Bumped stabilityThreshold to 50ms with a block-comment rationale.',
+      'All six new tests green locally. Running the whole suite now.',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
+);
+
+section('Alice releases lease, pings Bob');
+const aliceRelease = await releaseLease({
+  project_key: projectKey,
+  name: 'ports/8080',
+  holder: alice.name,
+});
+log(`alice: released=${aliceRelease.released}`);
+await wait(SHORT_PACE_MS);
+
+await send(
+  msg({
+    from: alice.name,
+    to: bob.name,
+    subject: 'ports/8080 is yours',
+    body: 'Done with E2E. Released. Go nuts.',
+    flushTo: bob.name,
+  }),
+);
+
+section('Bob acquires');
+const bobLease = await acquireLease({
+  project_key: projectKey,
+  name: 'ports/8080',
+  holder: bob.name,
+  ttl_s: 600,
+});
+log(`bob:   acquired=${bobLease.acquired}`);
+await wait(SHORT_PACE_MS);
+
+await send(
+  msg({
+    from: bob.name,
+    to: alice.name,
+    subject: 're: ports/8080 is yours',
+    body: 'Got it. Thanks.',
+    flushTo: alice.name,
+  }),
+);
+
+section('Closing messages');
+await send(
+  msg({
+    from: alice.name,
+    to: lead.name,
+    subject: 'money-qi4 complete',
+    body: [
+      'All tests green: 41 unit + 5 integration + 2 TUI. Pushed to',
+      'epic/qi4-receive-blocking. Closing the bd issue.',
+      '',
+      'Ready for the next task when you have one.',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
+);
+
+await send(
+  msg({
+    from: lead.name,
+    to: alice.name,
+    subject: 're: money-qi4 complete',
+    body: [
+      'Great. Next up: money-8yz (lease stale-reclaim invariant test). I',
+      'will bump it to ready in bd. Grab it when you are back at the',
+      'keyboard.',
+    ].join('\n'),
+    flushTo: alice.name,
+  }),
+);
+
+await send(
+  msg({
+    from: bob.name,
+    to: lead.name,
+    subject: 'money-30v E2E written and green',
+    body: [
+      'Test hits the golden path plus two regressions adjacent to 30v',
+      '(quick visual verification only — did not assert on them). All',
+      'three pass. Pushed.',
+    ].join('\n'),
+    flushTo: lead.name,
+  }),
+);
+
+await send(
+  msg({
+    from: lead.name,
+    to: bob.name,
+    subject: 're: money-30v E2E',
+    body: [
+      'Nice. Epic is now green on all three sub-tasks. I will run the',
+      'full deploy gate and shipping workflow. Thanks both of you.',
+    ].join('\n'),
+    flushTo: bob.name,
+  }),
+);
+
+section('Final lease state');
+const epicLease = await acquireLease({
+  project_key: projectKey,
+  name: 'workspace/epic-merge',
+  holder: lead.name,
+  ttl_s: 1800,
+});
+log(`lead:  acquired=${epicLease.acquired}  name=workspace/epic-merge`);
+await wait(LONG_PACE_MS);
 
 if (!live) {
-  section('12. TUI snapshot');
+  section('TUI snapshot');
   const { lastFrame, unmount } = render(
     React.createElement(App, { projectKey }),
   );
@@ -218,11 +424,11 @@ if (!live) {
 
 section('done');
 if (live) {
-  line(`Demo state kept at: ${dir}`);
-  line('Leave your TUI running to keep watching, or:');
-  line(`  rm -rf ${dir}`);
+  log(`Demo state kept at: ${dir}`);
+  log('Leave your TUI running to keep watching, or:');
+  log(`  rm -rf ${dir}`);
 } else {
-  line(`Demo state was at: ${dir}`);
-  line('Removed.');
+  log(`Demo state was at: ${dir}`);
+  log('Removed.');
   rmSync(dir, { recursive: true, force: true });
 }

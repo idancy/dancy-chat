@@ -26,7 +26,7 @@ export const App = ({ projectKey }: Props): React.ReactElement => {
   //   top row (agents|leases panels)       = 3 + 4*max(1, count) each, take max
   //   messages panel overhead (title+gap)  = 2
   //   footer                               = 1
-  const agentLines = 3 + 4 * Math.max(1, agents.length);
+  const agentLines = 3 + 3 * Math.max(1, agents.length);
   const leaseLines = 3 + 4 * Math.max(1, leases.length);
   const topRowLines = Math.max(agentLines, leaseLines);
   const messagesBudget = Math.max(3, rows - 3 - topRowLines - 2 - 1);
@@ -48,7 +48,7 @@ export const App = ({ projectKey }: Props): React.ReactElement => {
       </Box>
       <Box>
         <Box flexGrow={1} marginRight={1}>
-          <AgentsPanel agents={agents} now={now} />
+          <AgentsPanel agents={agents} />
         </Box>
         <Box flexGrow={1}>
           <LeasesPanel leases={leases} now={now} />

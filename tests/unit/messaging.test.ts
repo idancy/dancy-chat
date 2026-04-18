@@ -114,6 +114,42 @@ describe('send + receive', () => {
     expect(elapsed).toBeLessThan(1500);
   });
 
+  test('block=true: abort mid-wait does not archive messages that arrive later', async () => {
+    const controller = new AbortController();
+    const receivePromise = receiveMessages(
+      {
+        project_key: projectKey,
+        agent_name: 'bob',
+        block: true,
+        timeout_s: 5,
+      },
+      controller.signal,
+    );
+    // Arm the watcher, then abort (simulating MCP request cancellation).
+    await new Promise((r) => setTimeout(r, 50));
+    controller.abort();
+    const { messages } = await receivePromise;
+    expect(messages).toHaveLength(0);
+
+    // A message arriving after the abort should stay in the inbox —
+    // the cancelled caller must not drain it into the archive.
+    await sendMessage({
+      project_key: projectKey,
+      from: 'alice',
+      to: 'bob',
+      subject: 'post-abort',
+      body: '',
+    });
+    await new Promise((r) => setTimeout(r, 100));
+
+    const next = await receiveMessages({
+      project_key: projectKey,
+      agent_name: 'bob',
+    });
+    expect(next.messages).toHaveLength(1);
+    expect(next.messages[0]?.subject).toBe('post-abort');
+  });
+
   test('block=true respects timeout and returns empty', async () => {
     const started = Date.now();
     const { messages } = await receiveMessages({

@@ -41,11 +41,15 @@ const errorResult = (err: unknown) => ({
   isError: true,
 });
 
+type HandlerExtra = { signal?: AbortSignal };
+
 const wrap =
-  <Input, Output>(handler: (input: Input) => Promise<Output>) =>
-  async (input: Input) => {
+  <Input, Output>(
+    handler: (input: Input, extra: HandlerExtra) => Promise<Output>,
+  ) =>
+  async (input: Input, extra: HandlerExtra) => {
     try {
-      return asToolResult(await handler(input));
+      return asToolResult(await handler(input, extra));
     } catch (err) {
       return errorResult(err);
     }
@@ -87,7 +91,10 @@ export const createServer = (): McpServer => {
       inputSchema: ReceiveMessagesInput.shape,
     },
     wrap(
-      async (input: z.infer<typeof ReceiveMessagesInput>) => await receiveMessages(input),
+      async (
+        input: z.infer<typeof ReceiveMessagesInput>,
+        extra: HandlerExtra,
+      ) => await receiveMessages(input, extra.signal),
     ),
   );
 

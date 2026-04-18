@@ -114,6 +114,13 @@ export const receiveMessages = async (
 
   await waitForAdd(inbox, timeout_s * 1000, signal);
 
+  // If the caller gave up (client cancellation, MCP request abort),
+  // don't consume messages they won't receive. Leave the inbox intact
+  // for the next live receive_messages call.
+  if (signal?.aborted) {
+    return { messages: [] };
+  }
+
   const second = await drain(inbox, archive);
   return { messages: second };
 };

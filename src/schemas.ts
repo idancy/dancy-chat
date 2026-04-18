@@ -8,6 +8,7 @@ export const AgentRecord = z.object({
   session_id: z.string().nullable(),
   registered_at: z.string(),
   last_active: z.string(),
+  pid: z.number().int().optional(),
 });
 export type AgentRecord = z.infer<typeof AgentRecord>;
 

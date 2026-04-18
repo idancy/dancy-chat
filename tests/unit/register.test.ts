@@ -1,9 +1,11 @@
+import { spawn } from 'node:child_process';
 import { promises as fs, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { register } from '../../src/tools/register.js';
 import { listAgents } from '../../src/tools/listAgents.js';
+import { agentFile } from '../../src/fs/paths.js';
 
 describe('register', () => {
   let dir: string;
@@ -77,6 +79,60 @@ describe('register', () => {
     for (const a of listed.agents) {
       expect(a).not.toHaveProperty('session_id');
     }
+  });
+
+  test('stamps the server pid on the on-disk record', async () => {
+    const { name } = await register({
+      project_key: projectKey,
+      task_description: 'pid-stamped',
+    });
+    const raw = await fs.readFile(agentFile(projectKey, name), 'utf8');
+    const parsed = JSON.parse(raw) as { pid?: number };
+    expect(parsed.pid).toBe(process.pid);
+  });
+
+  test('orphan from a dead pid is swept before a new register', async () => {
+    // Simulate a prior server that registered and didn't clean up.
+    const child = spawn(process.execPath, ['-e', 'process.exit(0)'], {
+      stdio: 'ignore',
+    });
+    const deadPid = child.pid!;
+    await new Promise<void>((resolve) => child.on('exit', () => resolve()));
+
+    const orphanName = 'Ghost-Flan';
+    const orphanPath = agentFile(projectKey, orphanName);
+    await fs.mkdir(join(orphanPath, '..'), { recursive: true });
+    const now = new Date().toISOString();
+    await fs.writeFile(
+      orphanPath,
+      `${JSON.stringify(
+        {
+          name: orphanName,
+          task_description: 'crashed earlier',
+          session_id: 'stale-session',
+          registered_at: now,
+          last_active: now,
+          pid: deadPid,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    // New register, including the same session_id as the orphan. Sweep
+    // runs first, so dedupe won't find it — this is the behavior the
+    // plan calls out.
+    const { name } = await register({
+      project_key: projectKey,
+      task_description: 'fresh start',
+      session_id: 'stale-session',
+    });
+    expect(name).not.toBe(orphanName);
+
+    await expect(fs.access(orphanPath)).rejects.toThrow();
+    const listed = await listAgents({ project_key: projectKey });
+    expect(listed.agents).toHaveLength(1);
+    expect(listed.agents[0]?.name).toBe(name);
   });
 
   test('concurrent registrations produce unique names', async () => {

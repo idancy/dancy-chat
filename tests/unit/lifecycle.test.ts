@@ -1,11 +1,14 @@
+import { spawn } from 'node:child_process';
 import { promises as fs, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   addRegistration,
   clearRegistry,
   getRegistrations,
+  isAlive,
+  sweepOrphans,
   teardownAll,
   type Registration,
 } from '../../src/lifecycle.js';
@@ -15,6 +18,38 @@ import { register } from '../../src/tools/register.js';
 import { sendMessage } from '../../src/tools/sendMessage.js';
 import { projectDir } from '../../src/config.js';
 import { agentFile, agentInbox, leaseFile } from '../../src/fs/paths.js';
+
+const spawnedDeadPid = async (): Promise<number> => {
+  const child = spawn(process.execPath, ['-e', 'process.exit(0)'], {
+    stdio: 'ignore',
+  });
+  const pid = child.pid!;
+  await new Promise<void>((resolve) => child.on('exit', () => resolve()));
+  return pid;
+};
+
+const writeAgentFile = async (
+  projectKey: string,
+  record: {
+    name: string;
+    task_description: string;
+    session_id: string | null;
+    pid?: number;
+  },
+): Promise<void> => {
+  const now = new Date().toISOString();
+  const full = {
+    name: record.name,
+    task_description: record.task_description,
+    session_id: record.session_id,
+    registered_at: now,
+    last_active: now,
+    ...(record.pid != null ? { pid: record.pid } : {}),
+  };
+  const path = agentFile(projectKey, record.name);
+  await fs.mkdir(join(path, '..'), { recursive: true });
+  await fs.writeFile(path, `${JSON.stringify(full, null, 2)}\n`);
+};
 
 describe('teardownAll', () => {
   let dir: string;
@@ -186,5 +221,109 @@ describe('teardownAll', () => {
 
     clearRegistry();
     expect(getRegistrations()).toHaveLength(0);
+  });
+});
+
+describe('sweepOrphans', () => {
+  let dir: string;
+  const projectKey = '/tmp/fake-project-for-sweep-test';
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dancy-chat-sweep-'));
+    process.env.DANCY_CHAT_DIR = dir;
+    clearRegistry();
+  });
+
+  afterEach(async () => {
+    delete process.env.DANCY_CHAT_DIR;
+    clearRegistry();
+    vi.restoreAllMocks();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  test('removes records whose pid is dead, preserves live ones', async () => {
+    const deadPid = await spawnedDeadPid();
+    await writeAgentFile(projectKey, {
+      name: 'Orphan-Tiramisu',
+      task_description: 'ghost',
+      session_id: 'sess-ghost',
+      pid: deadPid,
+    });
+    await writeAgentFile(projectKey, {
+      name: 'Live-Pavlova',
+      task_description: 'kicking',
+      session_id: null,
+      pid: process.pid,
+    });
+
+    const removed = await sweepOrphans(projectKey);
+    expect(removed).toEqual(['Orphan-Tiramisu']);
+    await expect(
+      fs.access(agentFile(projectKey, 'Orphan-Tiramisu')),
+    ).rejects.toThrow();
+    await fs.access(agentFile(projectKey, 'Live-Pavlova'));
+  });
+
+  test('releases leases held by swept orphans and removes their inbox', async () => {
+    const deadPid = await spawnedDeadPid();
+    await writeAgentFile(projectKey, {
+      name: 'Sad-Eclair',
+      task_description: 'gone',
+      session_id: null,
+      pid: deadPid,
+    });
+    await acquireLease({
+      project_key: projectKey,
+      name: 'resource/x',
+      holder: 'Sad-Eclair',
+      ttl_s: 60,
+    });
+    // Give Sad-Eclair an inbox entry.
+    await fs.mkdir(agentInbox(projectKey, 'Sad-Eclair'), { recursive: true });
+    await fs.writeFile(
+      join(agentInbox(projectKey, 'Sad-Eclair'), 'msg.json'),
+      '{}',
+    );
+
+    await sweepOrphans(projectKey);
+
+    await expect(fs.access(leaseFile(projectKey, 'resource/x'))).rejects.toThrow();
+    await expect(fs.access(agentInbox(projectKey, 'Sad-Eclair'))).rejects.toThrow();
+  });
+
+  test('treats a record without pid as orphan', async () => {
+    await writeAgentFile(projectKey, {
+      name: 'Nopid-Macaron',
+      task_description: 'legacy',
+      session_id: null,
+    });
+    const removed = await sweepOrphans(projectKey);
+    expect(removed).toEqual(['Nopid-Macaron']);
+  });
+
+  test('preserves a record whose pid check returns EPERM', async () => {
+    // A pid we don't own (like init) returns EPERM from signal 0 on
+    // Unix. Simulate by stubbing process.kill to throw EPERM.
+    await writeAgentFile(projectKey, {
+      name: 'Privileged-Baklava',
+      task_description: 'not ours',
+      session_id: null,
+      pid: 424242,
+    });
+    vi.spyOn(process, 'kill').mockImplementation(() => {
+      const err: NodeJS.ErrnoException = new Error('permission denied');
+      err.code = 'EPERM';
+      throw err;
+    });
+
+    const removed = await sweepOrphans(projectKey);
+    expect(removed).toEqual([]);
+    await fs.access(agentFile(projectKey, 'Privileged-Baklava'));
+  });
+
+  test('isAlive: current pid is alive, spawned-exited pid is dead', async () => {
+    expect(isAlive(process.pid)).toBe(true);
+    const dead = await spawnedDeadPid();
+    expect(isAlive(dead)).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import { projectSlug } from '../config.js';
 import { writeExclusive, writeThenRename } from '../fs/atomic.js';
 import { agentFile } from '../fs/paths.js';
 import { readAgents } from '../fs/reader.js';
+import { sweepOrphans } from '../lifecycle.js';
 import { baseName, disambiguate } from '../names/generate.js';
 import {
   AgentRecord,
@@ -25,6 +26,7 @@ const refreshLastActive = async (
     ...existing,
     task_description: taskDescription,
     last_active: new Date().toISOString(),
+    pid: process.pid,
   };
   await writeThenRename(
     agentFile(projectKey, existing.name),
@@ -36,6 +38,10 @@ const refreshLastActive = async (
 export const register = async (input: RegisterInput): Promise<RegisterOutput> => {
   const { project_key, task_description, session_id } = input;
   const slug = projectSlug(project_key);
+
+  // Clean up agent records left behind by prior servers that didn't
+  // run teardown cleanly (Claude Code /compact, SIGKILL, crash).
+  await sweepOrphans(project_key);
 
   if (session_id) {
     const existing = await readAgents(project_key);
@@ -56,6 +62,7 @@ export const register = async (input: RegisterInput): Promise<RegisterOutput> =>
       session_id: session_id ?? null,
       registered_at: now,
       last_active: now,
+      pid: process.pid,
     };
     try {
       await writeAgent(project_key, record);

@@ -1,61 +1,100 @@
 import { describe, expect, test } from 'vitest';
-import { baseName, disambiguate } from '../../src/names/generate.js';
-import {
-  DESSERTS,
-  FLAVORS,
-  NUMBER_WORDS,
-} from '../../src/names/wordlists.js';
+import { nameCandidates } from '../../src/names/generate.js';
+import { DESSERTS, FLAVORS, NUMBER_WORDS } from '../../src/names/wordlists.js';
 
-// Accepts any hyphenated run of CamelCase tokens, with an optional
-// suffix at the end (either a numbered word or a 2-hex fallback).
-const NAME_SHAPE = /^[A-Z][a-z]+(?:-[A-Z][a-z]+)+(?:-(?:[A-Z][a-z]+|[0-9a-f]{2}))?$/;
+const NAME_SHAPE = /^[A-Z][a-z]+(?:-[A-Z][a-z]+)*$/;
 
-describe('baseName', () => {
-  test('always returns `${flavor}-${dessert}` with both from the wordlists', () => {
-    for (let i = 0; i < 20; i++) {
-      const name = baseName();
-      expect(name).toMatch(NAME_SHAPE);
-      // Every generated base must decompose into a known flavor + dessert.
+const take = (n: number): string[] => {
+  const out: string[] = [];
+  const gen = nameCandidates();
+  for (let i = 0; i < n; i++) {
+    const { value, done } = gen.next();
+    if (done) break;
+    out.push(value);
+  }
+  return out;
+};
+
+const all = (): string[] => Array.from(nameCandidates());
+
+describe('nameCandidates', () => {
+  test('every yielded name matches the CamelCase-hyphenated shape', () => {
+    const sample = take(100);
+    for (const name of sample) expect(name).toMatch(NAME_SHAPE);
+  });
+
+  test('tier 1: first DESSERTS.length yields are each a bare dessert, all unique', () => {
+    const first = take(DESSERTS.length);
+    expect(first).toHaveLength(DESSERTS.length);
+    expect(new Set(first).size).toBe(DESSERTS.length);
+    for (const n of first) {
+      expect((DESSERTS as readonly string[]).includes(n)).toBe(true);
+    }
+    expect(new Set(first)).toEqual(new Set(DESSERTS));
+  });
+
+  test('tier 2: next FLAVORS*DESSERTS yields are unique flavor-dessert pairs', () => {
+    const gen = nameCandidates();
+    for (let i = 0; i < DESSERTS.length; i++) gen.next(); // skip tier 1
+    const t2: string[] = [];
+    const pairCount = FLAVORS.length * DESSERTS.length;
+    for (let i = 0; i < pairCount; i++) t2.push(gen.next().value as string);
+
+    expect(t2).toHaveLength(pairCount);
+    expect(new Set(t2).size).toBe(pairCount);
+    for (const name of t2) {
       const matched = FLAVORS.some((f) => {
         if (!name.startsWith(`${f}-`)) return false;
         const rest = name.slice(f.length + 1);
         return (DESSERTS as readonly string[]).includes(rest);
       });
-      expect(matched, `unexpected base name: ${name}`).toBe(true);
+      expect(matched, `not a flavor-dessert pair: ${name}`).toBe(true);
     }
   });
 
-  test('produces varied names across many calls', () => {
-    const seen = new Set<string>();
-    for (let i = 0; i < 200; i++) seen.add(baseName());
-    // With 12 × 9 = 108 combos, 200 rolls should hit a wide spread.
-    expect(seen.size).toBeGreaterThan(30);
-  });
-});
+  test('tier 3: next FLAVORS*DESSERTS*NUMBER_WORDS yields are unique triples', () => {
+    const gen = nameCandidates();
+    const prelude = DESSERTS.length + FLAVORS.length * DESSERTS.length;
+    for (let i = 0; i < prelude; i++) gen.next();
 
-describe('disambiguate', () => {
-  const BASE = 'Chocolate-Sundae';
+    const tripleCount = FLAVORS.length * DESSERTS.length * NUMBER_WORDS.length;
+    const t3: string[] = [];
+    for (let i = 0; i < tripleCount; i++) t3.push(gen.next().value as string);
 
-  test('n=0 returns the base unchanged', () => {
-    expect(disambiguate(BASE, 0)).toBe(BASE);
-  });
-
-  test('appends Two at n=1, Three at n=2, ... Twenty at n=19', () => {
-    expect(disambiguate(BASE, 1)).toBe('Chocolate-Sundae-Two');
-    expect(disambiguate(BASE, 2)).toBe('Chocolate-Sundae-Three');
-    expect(disambiguate(BASE, 19)).toBe('Chocolate-Sundae-Twenty');
+    expect(t3).toHaveLength(tripleCount);
+    expect(new Set(t3).size).toBe(tripleCount);
+    for (const name of t3) {
+      const endsInNumber = NUMBER_WORDS.some((n) => name.endsWith(`-${n}`));
+      expect(endsInNumber, `triple should end with a number word: ${name}`).toBe(
+        true,
+      );
+    }
   });
 
-  test('falls back to a 2-hex suffix beyond the numbered range', () => {
-    const name = disambiguate(BASE, 20);
-    expect(name).toMatch(/^Chocolate-Sundae-[0-9a-f]{2}$/);
+  test('generator terminates after all tiers (no infinite loop)', () => {
+    const total =
+      DESSERTS.length +
+      FLAVORS.length * DESSERTS.length +
+      FLAVORS.length * DESSERTS.length * NUMBER_WORDS.length;
+    const drained = all();
+    expect(drained).toHaveLength(total);
+    // Entire namespace is unique across tiers too.
+    expect(new Set(drained).size).toBe(total);
   });
 
-  test('output always matches the canonical name shape', () => {
-    const long = 'Java-Chip-Ice-Cream-Cake';
-    expect(disambiguate(long, 0)).toMatch(NAME_SHAPE);
-    expect(disambiguate(long, 5)).toMatch(NAME_SHAPE);
-    expect(disambiguate(long, 25)).toMatch(NAME_SHAPE);
+  test('shuffle fairness: two fresh generators rarely produce identical tier-1 orderings', () => {
+    // Tier 1 has ~19! orderings; two matching runs by chance is
+    // astronomically unlikely. We run a few pairs to be safe.
+    let anyDiffered = false;
+    for (let k = 0; k < 5; k++) {
+      const a = take(DESSERTS.length).join(',');
+      const b = take(DESSERTS.length).join(',');
+      if (a !== b) {
+        anyDiffered = true;
+        break;
+      }
+    }
+    expect(anyDiffered).toBe(true);
   });
 });
 

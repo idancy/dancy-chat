@@ -3,14 +3,12 @@ import { writeExclusive, writeThenRename } from '../fs/atomic.js';
 import { agentFile } from '../fs/paths.js';
 import { readAgents } from '../fs/reader.js';
 import { sweepOrphans } from '../lifecycle.js';
-import { baseName, disambiguate } from '../names/generate.js';
+import { nameCandidates } from '../names/generate.js';
 import {
   AgentRecord,
   type RegisterInput,
   type RegisterOutput,
 } from '../schemas.js';
-
-const MAX_NAME_ATTEMPTS = 50;
 
 const writeAgent = async (projectKey: string, record: AgentRecord): Promise<void> => {
   const json = `${JSON.stringify(record, null, 2)}\n`;
@@ -53,9 +51,7 @@ export const register = async (input: RegisterInput): Promise<RegisterOutput> =>
   }
 
   const now = new Date().toISOString();
-  const base = baseName();
-  for (let n = 0; n < MAX_NAME_ATTEMPTS; n++) {
-    const name = disambiguate(base, n);
+  for (const name of nameCandidates()) {
     const record: AgentRecord = {
       name,
       task_description,
@@ -72,6 +68,6 @@ export const register = async (input: RegisterInput): Promise<RegisterOutput> =>
     }
   }
   throw new Error(
-    `unable to generate a unique agent name after ${MAX_NAME_ATTEMPTS} attempts`,
+    'name space exhausted: all dessert/flavor combinations are taken',
   );
 };

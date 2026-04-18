@@ -21,14 +21,14 @@ describe('register', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  test('returns a readable adjective-noun name', async () => {
+  test('returns a readable CamelCase name', async () => {
     const result = await register({
       project_key: projectKey,
       task_description: 'test agent',
     });
-    expect(result.name).toMatch(
-      /^[A-Z][a-z]+(?:-[A-Z][a-z]+)+(?:-(?:[A-Z][a-z]+|[0-9a-f]{2}))?$/,
-    );
+    // Tier 1 yields a bare dessert; deeper tiers add hyphenated
+    // segments. All shapes are CamelCase tokens joined by "-".
+    expect(result.name).toMatch(/^[A-Z][a-z]+(?:-[A-Z][a-z]+)*$/);
     expect(result.slug).toBeTruthy();
   });
 

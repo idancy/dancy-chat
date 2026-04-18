@@ -1,22 +1,42 @@
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { DESSERTS, FLAVORS, NUMBER_WORDS } from './wordlists.js';
 
-const pick = <T>(arr: readonly T[]): T => {
-  const idx = randomInt(0, arr.length);
-  return arr[idx] as T;
+// Fisher-Yates shuffle, seeded from crypto.randomInt so every caller
+// gets a fresh order. Non-mutating — returns a new array.
+const shuffled = <T>(arr: readonly T[]): T[] => {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = randomInt(0, i + 1);
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
 };
 
-// Roll a fresh random flavor + dessert combination. Callers register
-// this base first; only on EEXIST do they disambiguate (see below).
-export const baseName = (): string => `${pick(FLAVORS)}-${pick(DESSERTS)}`;
+// Yield candidate agent names in order from shortest to longest,
+// randomized within each tier. `register` iterates until O_EXCL
+// write of agents/<name>.json succeeds; the filesystem decides
+// availability, not us.
+//
+//   Tier 1: dessert alone            (e.g. "Sundae")
+//   Tier 2: flavor-dessert           (e.g. "Vanilla-Eclair")
+//   Tier 3: flavor-dessert-number    (e.g. "Vanilla-Eclair-Two")
+//
+// If every candidate across all three tiers is taken, the generator
+// finishes without yielding more; `register` then throws.
+export function* nameCandidates(): Generator<string> {
+  for (const d of shuffled(DESSERTS)) yield d;
 
-// Append a numbered-word disambiguator when a base has already been
-// taken. n=0 returns the base unchanged. n=1 appends "Two" (i.e. this
-// is the *second* agent of that flavor), n=2 → "Three", up to
-// "Twenty". Beyond that the generator falls back to a 2-hex suffix so
-// register's loop can never wedge.
-export const disambiguate = (base: string, n: number): string => {
-  if (n === 0) return base;
-  if (n <= NUMBER_WORDS.length) return `${base}-${NUMBER_WORDS[n - 1]}`;
-  return `${base}-${randomBytes(1).toString('hex')}`;
-};
+  const pairs: string[] = [];
+  for (const f of FLAVORS) {
+    for (const d of DESSERTS) pairs.push(`${f}-${d}`);
+  }
+  for (const p of shuffled(pairs)) yield p;
+
+  const triples: string[] = [];
+  for (const f of FLAVORS) {
+    for (const d of DESSERTS) {
+      for (const n of NUMBER_WORDS) triples.push(`${f}-${d}-${n}`);
+    }
+  }
+  for (const t of shuffled(triples)) yield t;
+}

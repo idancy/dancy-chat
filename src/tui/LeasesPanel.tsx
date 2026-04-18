@@ -1,7 +1,6 @@
 import { Box, Text } from 'ink';
 import React from 'react';
 import type { NamedLease } from '../fs/reader.js';
-import { useNow } from './useProjectWatch.js';
 
 const formatRemaining = (expiresAtMs: number, nowMs: number): string => {
   const remainingS = Math.max(0, Math.floor((expiresAtMs - nowMs) / 1000));
@@ -13,10 +12,10 @@ const formatRemaining = (expiresAtMs: number, nowMs: number): string => {
 
 type Props = {
   leases: NamedLease[];
+  now: number;
 };
 
-export const LeasesPanel = ({ leases }: Props): React.ReactElement => {
-  const now = useNow(1_000);
+export const LeasesPanel = ({ leases, now }: Props): React.ReactElement => {
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1}>
       <Text bold>LEASES ({leases.length})</Text>

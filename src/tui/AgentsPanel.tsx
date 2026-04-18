@@ -1,7 +1,6 @@
 import { Box, Text } from 'ink';
 import React from 'react';
 import type { AgentRecord } from '../schemas.js';
-import { useNow } from './useProjectWatch.js';
 
 const formatAge = (iso: string, nowMs: number): string => {
   const age = Math.max(0, Math.floor((nowMs - new Date(iso).getTime()) / 1000));
@@ -12,10 +11,10 @@ const formatAge = (iso: string, nowMs: number): string => {
 
 type Props = {
   agents: AgentRecord[];
+  now: number;
 };
 
-export const AgentsPanel = ({ agents }: Props): React.ReactElement => {
-  const now = useNow(1_000);
+export const AgentsPanel = ({ agents, now }: Props): React.ReactElement => {
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1}>
       <Text bold>AGENTS ({agents.length})</Text>

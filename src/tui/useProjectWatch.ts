@@ -1,4 +1,5 @@
 import chokidar from 'chokidar';
+import { useStdout } from 'ink';
 import { mkdirSync } from 'node:fs';
 import { useEffect, useRef, useState } from 'react';
 import { projectDir } from '../config.js';
@@ -19,9 +20,11 @@ export const useProjectWatch = (
 ): ProjectState => {
   const [state, setState] = useState<ProjectState>(EMPTY);
   const cancelledRef = useRef(false);
+  const fingerprintRef = useRef<string>('');
 
   useEffect(() => {
     cancelledRef.current = false;
+    fingerprintRef.current = '';
     const dir = projectDir(projectKey);
     // chokidar silently watches nothing if the path doesn't exist when
     // the watcher starts. Ensure it before arming.
@@ -35,7 +38,18 @@ export const useProjectWatch = (
           readLeases(projectKey),
           tailMessages(projectKey, messageLimit),
         ]);
-        if (!cancelledRef.current) setState({ agents, leases, messages });
+        if (cancelledRef.current) return;
+        // Skip setState when nothing visible has changed. The 1s poll
+        // otherwise forces a re-render every tick even when the project
+        // is idle, which combined with Ink's in-place repaint shows up
+        // as flicker.
+        const fp =
+          `${agents.length}:${agents.map((a) => `${a.name}@${a.last_active}`).join(',')}|` +
+          `${leases.length}:${leases.map((l) => `${l.name}@${l.record.expires_at_ms}:${l.record.holder}`).join(',')}|` +
+          `${messages.length}:${messages[messages.length - 1]?.msg_id ?? ''}`;
+        if (fp === fingerprintRef.current) return;
+        fingerprintRef.current = fp;
+        setState({ agents, leases, messages });
       } catch {
         // swallow — errors surface via empty state
       }
@@ -83,4 +97,24 @@ export const useNow = (intervalMs = 1000): number => {
     return () => clearInterval(id);
   }, [intervalMs]);
   return now;
+};
+
+export type TerminalSize = { rows: number; columns: number };
+
+export const useTerminalSize = (): TerminalSize => {
+  const { stdout } = useStdout();
+  const [size, setSize] = useState<TerminalSize>(() => ({
+    rows: stdout.rows ?? 24,
+    columns: stdout.columns ?? 80,
+  }));
+  useEffect(() => {
+    const onResize = (): void => {
+      setSize({ rows: stdout.rows ?? 24, columns: stdout.columns ?? 80 });
+    };
+    stdout.on('resize', onResize);
+    return () => {
+      stdout.off('resize', onResize);
+    };
+  }, [stdout]);
+  return size;
 };

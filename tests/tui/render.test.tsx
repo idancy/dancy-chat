@@ -81,6 +81,9 @@ describe('TUI App', () => {
       expect(frame).toContain('ports/8080');
       // Drained — no unread marker.
       expect(frame).not.toContain('●');
+      // Age affordance: "<desc> · <N>s" on the description row.
+      expect(frame).toMatch(/alice the lead · \d+s/);
+      expect(frame).toMatch(/bob the worker · \d+s/);
     } finally {
       unmount();
     }

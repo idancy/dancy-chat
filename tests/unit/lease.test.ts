@@ -2,7 +2,9 @@ import { promises as fs, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { readAgents } from '../../src/fs/reader.js';
 import { acquireLease } from '../../src/tools/acquireLease.js';
+import { register } from '../../src/tools/register.js';
 import { releaseLease } from '../../src/tools/releaseLease.js';
 
 describe('lease', () => {
@@ -137,5 +139,32 @@ describe('lease', () => {
       holder: 'alice',
     });
     expect(released.released).toBe(false);
+  });
+
+  test('acquire and release each bump the holder last_active', async () => {
+    const alice = await register({
+      project_key: projectKey,
+      task_description: 'alice',
+    });
+    const atRegister = (await readAgents(projectKey))[0]!.last_active;
+    await new Promise((r) => setTimeout(r, 10));
+
+    await acquireLease({
+      project_key: projectKey,
+      name: 'ports/8080',
+      holder: alice.name,
+      ttl_s: 60,
+    });
+    const afterAcquire = (await readAgents(projectKey))[0]!.last_active;
+    expect(afterAcquire > atRegister).toBe(true);
+    await new Promise((r) => setTimeout(r, 10));
+
+    await releaseLease({
+      project_key: projectKey,
+      name: 'ports/8080',
+      holder: alice.name,
+    });
+    const afterRelease = (await readAgents(projectKey))[0]!.last_active;
+    expect(afterRelease > afterAcquire).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import {
   type ReceiveMessagesInput,
   type ReceiveMessagesOutput,
 } from '../schemas.js';
+import { touchAgent } from './touchAgent.js';
 
 const DEFAULT_TIMEOUT_S = 60;
 const DEBOUNCE_MS = 25;
@@ -106,6 +107,7 @@ export const receiveMessages = async (
   const archive = agentArchive(project_key, agent_name);
   await ensureDir(inbox);
   await ensureDir(archive);
+  await touchAgent(project_key, agent_name);
 
   const first = await drain(inbox, archive);
   if (!block || first.length > 0) {

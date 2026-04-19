@@ -6,6 +6,7 @@ import {
   type SendMessageOutput,
 } from '../schemas.js';
 import { newUlid } from '../util/ulid.js';
+import { touchAgent } from './touchAgent.js';
 
 // Filenames use ISO timestamp + ULID so both humans and machines can
 // sort chronologically. Colons in ISO timestamps are legal on macOS/
@@ -33,5 +34,6 @@ export const sendMessage = async (input: SendMessageInput): Promise<SendMessageO
     messageFile(project_key, to, filename),
     `${JSON.stringify(record, null, 2)}\n`,
   );
+  await touchAgent(project_key, from);
   return { msg_id, sent_at };
 };

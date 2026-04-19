@@ -6,6 +6,7 @@ import {
   type ReleaseLeaseInput,
   type ReleaseLeaseOutput,
 } from '../schemas.js';
+import { touchAgent } from './touchAgent.js';
 
 // Best-effort release. The narrow TOCTOU window between reading the
 // holder and unlinking the file only matters if the lease expires AND a
@@ -16,6 +17,7 @@ export const releaseLease = async (
   input: ReleaseLeaseInput,
 ): Promise<ReleaseLeaseOutput> => {
   const { project_key, name, holder } = input;
+  await touchAgent(project_key, holder);
   const path = leaseFile(project_key, name);
   const existing = await readJsonSafe(path, LeaseRecord);
   if (!existing || existing.holder !== holder) {

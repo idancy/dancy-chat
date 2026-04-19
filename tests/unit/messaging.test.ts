@@ -2,7 +2,9 @@ import { promises as fs, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { readAgents } from '../../src/fs/reader.js';
 import { receiveMessages } from '../../src/tools/receiveMessages.js';
+import { register } from '../../src/tools/register.js';
 import { sendMessage } from '../../src/tools/sendMessage.js';
 
 describe('send + receive', () => {
@@ -148,6 +150,54 @@ describe('send + receive', () => {
     });
     expect(next.messages).toHaveLength(1);
     expect(next.messages[0]?.subject).toBe('post-abort');
+  });
+
+  test('send + receive bumps last_active for both sender and receiver', async () => {
+    const alice = await register({
+      project_key: projectKey,
+      task_description: 'alice',
+    });
+    const bob = await register({
+      project_key: projectKey,
+      task_description: 'bob',
+    });
+    const snapshot = Object.fromEntries(
+      (await readAgents(projectKey)).map((a) => [a.name, a.last_active]),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    await sendMessage({
+      project_key: projectKey,
+      from: alice.name,
+      to: bob.name,
+      subject: 'ping',
+      body: '',
+    });
+    await receiveMessages({ project_key: projectKey, agent_name: bob.name });
+
+    const after = Object.fromEntries(
+      (await readAgents(projectKey)).map((a) => [a.name, a.last_active]),
+    );
+    expect(after[alice.name]! > snapshot[alice.name]!).toBe(true);
+    expect(after[bob.name]! > snapshot[bob.name]!).toBe(true);
+  });
+
+  test('send from an unregistered agent still delivers (touch is no-op)', async () => {
+    await sendMessage({
+      project_key: projectKey,
+      from: 'ghost',
+      to: 'bob',
+      subject: 'hi',
+      body: '',
+    });
+    const { messages } = await receiveMessages({
+      project_key: projectKey,
+      agent_name: 'bob',
+    });
+    expect(messages).toHaveLength(1);
+    // No agent record should have been created for the ghost sender.
+    const agents = await readAgents(projectKey);
+    expect(agents.map((a) => a.name)).not.toContain('ghost');
   });
 
   test('block=true respects timeout and returns empty', async () => {

@@ -8,6 +8,7 @@ import {
   type AcquireLeaseInput,
   type AcquireLeaseOutput,
 } from '../schemas.js';
+import { touchAgent } from './touchAgent.js';
 
 const buildLease = (name: string, holder: string, ttl_s: number): LeaseRecord => {
   const now = Date.now();
@@ -51,6 +52,7 @@ export const acquireLease = async (
   input: AcquireLeaseInput,
 ): Promise<AcquireLeaseOutput> => {
   const { project_key, name, holder, ttl_s } = input;
+  await touchAgent(project_key, holder);
   const path = leaseFile(project_key, name);
   const mine = buildLease(name, holder, ttl_s);
 

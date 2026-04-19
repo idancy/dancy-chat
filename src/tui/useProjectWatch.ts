@@ -3,13 +3,19 @@ import { useStdout } from 'ink';
 import { mkdirSync } from 'node:fs';
 import { useEffect, useRef, useState } from 'react';
 import { projectDir } from '../config.js';
-import { readAgents, readLeases, tailMessages, type NamedLease } from '../fs/reader.js';
-import type { AgentRecord, MessageRecord } from '../schemas.js';
+import {
+  readAgents,
+  readLeases,
+  tailMessages,
+  type NamedLease,
+  type ObservedMessage,
+} from '../fs/reader.js';
+import type { AgentRecord } from '../schemas.js';
 
 export type ProjectState = {
   agents: AgentRecord[];
   leases: NamedLease[];
-  messages: MessageRecord[];
+  messages: ObservedMessage[];
 };
 
 const EMPTY: ProjectState = { agents: [], leases: [], messages: [] };
@@ -46,7 +52,7 @@ export const useProjectWatch = (
         const fp =
           `${agents.length}:${agents.map((a) => `${a.name}@${a.last_active}`).join(',')}|` +
           `${leases.length}:${leases.map((l) => `${l.name}@${l.record.expires_at_ms}:${l.record.holder}`).join(',')}|` +
-          `${messages.length}:${messages[messages.length - 1]?.msg_id ?? ''}`;
+          `${messages.length}:${messages.map((m) => `${m.record.msg_id}${m.status[0]}`).join(',')}`;
         if (fp === fingerprintRef.current) return;
         fingerprintRef.current = fp;
         setState({ agents, leases, messages });

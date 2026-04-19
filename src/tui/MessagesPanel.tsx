@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import React from 'react';
-import type { MessageRecord } from '../schemas.js';
+import type { ObservedMessage } from '../fs/reader.js';
 
 const formatTime = (iso: string): string => {
   const d = new Date(iso);
@@ -32,13 +32,13 @@ const messageHeight = (
 };
 
 type FitEntry = {
-  message: MessageRecord;
+  observed: ObservedMessage;
   lines: string[];
   truncated: boolean;
 };
 
 const fit = (
-  messages: MessageRecord[],
+  messages: ObservedMessage[],
   budget: number,
   wrapCols: number,
   hardLimit?: number,
@@ -49,10 +49,10 @@ const fit = (
   let used = 0;
 
   for (const m of newestFirst) {
-    const lines = bodyLines(m.body);
+    const lines = bodyLines(m.record.body);
     const height = messageHeight(lines, wrapCols);
     if (used + height <= budget) {
-      picked.push({ message: m, lines, truncated: false });
+      picked.push({ observed: m, lines, truncated: false });
       used += height;
       continue;
     }
@@ -71,14 +71,14 @@ const fit = (
       keep.push(line);
       bodyUsed += r;
     }
-    picked.push({ message: m, lines: keep, truncated: true });
+    picked.push({ observed: m, lines: keep, truncated: true });
     break;
   }
   return picked;
 };
 
 type Props = {
-  messages: MessageRecord[];
+  messages: ObservedMessage[];
   maxHeight: number;
   columns: number;
   limit?: number;
@@ -103,9 +103,15 @@ export const MessagesPanel = ({
       {picked.length === 0 ? (
         <Text dimColor>no messages yet</Text>
       ) : (
-        picked.map(({ message: m, lines, truncated }) => (
+        picked.map(({ observed: { record: m, status }, lines, truncated }) => (
           <Box key={m.msg_id} flexDirection="column" marginTop={1}>
             <Box>
+              {status === 'unread' ? (
+                <Text color="magenta" bold>●</Text>
+              ) : (
+                <Text> </Text>
+              )}
+              <Text>{' '}</Text>
               <Text color="yellow">{formatTime(m.sent_at)}</Text>
               <Text>{'  '}</Text>
               <Text color="cyan">{m.from}</Text>

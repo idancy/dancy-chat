@@ -46,12 +46,22 @@ export const readLeases = async (projectKey: string): Promise<NamedLease[]> => {
     .map((record) => ({ name: record.name, record }));
 };
 
-// Tail the most recent N messages across all agents, drawn from their
-// archive directories. Sorted chronologically via ULID-sortable filenames.
+// TUI-facing view of a message: the on-disk record plus a derived
+// read/unread status based on which directory the file was found in.
+// Unread = still in the per-agent inbox; read = moved to archive by a
+// prior receive_messages drain.
+export type ObservedMessage = {
+  record: Message;
+  status: 'unread' | 'read';
+};
+
+// Tail the most recent N messages across all agents, drawn from both
+// the pending inbox (unread) and the archive (read). Sorted
+// chronologically via ULID-sortable filenames, independent of status.
 export const tailMessages = async (
   projectKey: string,
   limit: number,
-): Promise<Message[]> => {
+): Promise<ObservedMessage[]> => {
   const msgDir = messagesDir(projectKey);
   let agentDirs: string[];
   try {
@@ -62,22 +72,38 @@ export const tailMessages = async (
     throw err;
   }
 
-  const allFiles: Array<{ path: string; filename: string }> = [];
+  const allFiles: Array<{
+    path: string;
+    filename: string;
+    status: 'unread' | 'read';
+  }> = [];
   for (const agent of agentDirs) {
-    const archiveDir = join(msgDir, agent, 'archive');
-    const filenames = await jsonNames(archiveDir);
-    for (const filename of filenames) {
-      allFiles.push({ path: join(archiveDir, filename), filename });
+    const inboxDir = join(msgDir, agent);
+    const archiveDir = join(inboxDir, 'archive');
+    // jsonNames filters to *.json files, so the archive/ subdir is
+    // skipped naturally when enumerating the inbox top level.
+    const [pending, archived] = await Promise.all([
+      jsonNames(inboxDir),
+      jsonNames(archiveDir),
+    ]);
+    for (const filename of pending) {
+      allFiles.push({ path: join(inboxDir, filename), filename, status: 'unread' });
+    }
+    for (const filename of archived) {
+      allFiles.push({ path: join(archiveDir, filename), filename, status: 'read' });
     }
   }
 
   allFiles.sort((a, b) => a.filename.localeCompare(b.filename));
   const selected = allFiles.slice(-limit);
 
-  const messages = await Promise.all(
-    selected.map((f) => readJsonSafe(f.path, MessageRecord)),
+  const observed = await Promise.all(
+    selected.map(async (f) => {
+      const record = await readJsonSafe(f.path, MessageRecord);
+      return record ? { record, status: f.status } : null;
+    }),
   );
-  return messages.filter((m): m is Message => m !== null);
+  return observed.filter((o): o is ObservedMessage => o !== null);
 };
 
 // Helper for `list_agents` tool: scrubs session_id from output.

@@ -59,7 +59,6 @@ describe('TUI App', () => {
       subject: 'welcome',
       body: 'hi bob',
     });
-    // Receive to move into archive (that's what tailMessages reads)
     await receiveMessages({ project_key: projectKey, agent_name: bob.name });
     await acquireLease({
       project_key: projectKey,
@@ -80,6 +79,39 @@ describe('TUI App', () => {
       expect(frame).toContain('bob the worker');
       expect(frame).toContain('welcome');
       expect(frame).toContain('ports/8080');
+      // Drained — no unread marker.
+      expect(frame).not.toContain('●');
+    } finally {
+      unmount();
+    }
+  });
+
+  test('shows unread marker for messages still in the inbox', async () => {
+    const alice = await register({
+      project_key: projectKey,
+      task_description: 'alice the lead',
+    });
+    const bob = await register({
+      project_key: projectKey,
+      task_description: 'bob the worker',
+    });
+    await sendMessage({
+      project_key: projectKey,
+      from: alice.name,
+      to: bob.name,
+      subject: 'pending',
+      body: 'still unread',
+    });
+    // No receiveMessages call — the message stays in bob's inbox.
+
+    const { lastFrame, unmount } = render(
+      React.createElement(App, { projectKey }),
+    );
+    try {
+      await new Promise((r) => setTimeout(r, 300));
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('pending');
+      expect(frame).toContain('●');
     } finally {
       unmount();
     }

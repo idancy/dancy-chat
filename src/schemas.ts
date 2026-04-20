@@ -5,7 +5,6 @@ import { z } from 'zod';
 export const AgentRecord = z.object({
   name: z.string(),
   task_description: z.string(),
-  session_id: z.string().nullable(),
   registered_at: z.string(),
   last_active: z.string(),
   pid: z.number().int().optional(),
@@ -37,7 +36,6 @@ export type LeaseRecord = z.infer<typeof LeaseRecord>;
 export const RegisterInput = z.object({
   project_key: z.string().min(1),
   task_description: z.string().min(1),
-  session_id: z.string().optional(),
 });
 export type RegisterInput = z.infer<typeof RegisterInput>;
 

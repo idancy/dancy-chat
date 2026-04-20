@@ -33,7 +33,6 @@ const writeAgentFile = async (
   record: {
     name: string;
     task_description: string;
-    session_id: string | null;
     pid?: number;
   },
 ): Promise<void> => {
@@ -41,7 +40,6 @@ const writeAgentFile = async (
   const full = {
     name: record.name,
     task_description: record.task_description,
-    session_id: record.session_id,
     registered_at: now,
     last_active: now,
     ...(record.pid != null ? { pid: record.pid } : {}),
@@ -112,14 +110,15 @@ describe('teardownAll', () => {
   });
 
   test('other agents remain: project dir and their state preserved', async () => {
+    // Under the one-agent-per-process invariant, only one of these is
+    // `register()`; the co-tenant is written directly so both records
+    // co-exist in the test fixture.
     const { name: alice } = await register({
       project_key: projectKey,
       task_description: 'alice',
     });
-    const { name: bob } = await register({
-      project_key: projectKey,
-      task_description: 'bob',
-    });
+    const bob = 'Bob-Baklava';
+    await writeAgentFile(projectKey, { name: bob, task_description: 'bob', pid: process.pid });
     await acquireLease({
       project_key: projectKey,
       name: 'bob-lease',
@@ -141,10 +140,8 @@ describe('teardownAll', () => {
       project_key: projectKey,
       task_description: 'alice',
     });
-    const { name: bob } = await register({
-      project_key: projectKey,
-      task_description: 'bob',
-    });
+    const bob = 'Bob-Cannoli';
+    await writeAgentFile(projectKey, { name: bob, task_description: 'bob', pid: process.pid });
     await acquireLease({
       project_key: projectKey,
       name: 'bobs-lease',
@@ -165,10 +162,8 @@ describe('teardownAll', () => {
       project_key: projectKey,
       task_description: 'alice',
     });
-    const { name: bob } = await register({
-      project_key: projectKey,
-      task_description: 'bob',
-    });
+    const bob = 'Bob-Danish';
+    await writeAgentFile(projectKey, { name: bob, task_description: 'bob', pid: process.pid });
 
     await teardownAll([
       { project_key: projectKey, agent_name: alice },
@@ -246,13 +241,11 @@ describe('sweepOrphans', () => {
     await writeAgentFile(projectKey, {
       name: 'Orphan-Tiramisu',
       task_description: 'ghost',
-      session_id: 'sess-ghost',
       pid: deadPid,
     });
     await writeAgentFile(projectKey, {
       name: 'Live-Pavlova',
       task_description: 'kicking',
-      session_id: null,
       pid: process.pid,
     });
 
@@ -269,7 +262,6 @@ describe('sweepOrphans', () => {
     await writeAgentFile(projectKey, {
       name: 'Sad-Eclair',
       task_description: 'gone',
-      session_id: null,
       pid: deadPid,
     });
     await acquireLease({
@@ -295,7 +287,6 @@ describe('sweepOrphans', () => {
     await writeAgentFile(projectKey, {
       name: 'Nopid-Macaron',
       task_description: 'legacy',
-      session_id: null,
     });
     const removed = await sweepOrphans(projectKey);
     expect(removed).toEqual(['Nopid-Macaron']);
@@ -307,7 +298,6 @@ describe('sweepOrphans', () => {
     await writeAgentFile(projectKey, {
       name: 'Privileged-Baklava',
       task_description: 'not ours',
-      session_id: null,
       pid: 424242,
     });
     vi.spyOn(process, 'kill').mockImplementation(() => {

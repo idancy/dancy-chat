@@ -34,20 +34,20 @@ const refreshLastActive = async (
 };
 
 export const register = async (input: RegisterInput): Promise<RegisterOutput> => {
-  const { project_key, task_description, session_id } = input;
+  const { project_key, task_description } = input;
   const slug = projectSlug(project_key);
 
   // Clean up agent records left behind by prior servers that didn't
   // run teardown cleanly (Claude Code /compact, SIGKILL, crash).
   await sweepOrphans(project_key);
 
-  if (session_id) {
-    const existing = await readAgents(project_key);
-    const match = existing.find((a) => a.session_id === session_id);
-    if (match) {
-      await refreshLastActive(project_key, match, task_description);
-      return { name: match.name, slug };
-    }
+  // One MCP server process = one agent. If a record for our pid
+  // already exists (post-sweep, so it's genuinely ours), reuse it.
+  const existing = await readAgents(project_key);
+  const match = existing.find((a) => a.pid === process.pid);
+  if (match) {
+    await refreshLastActive(project_key, match, task_description);
+    return { name: match.name, slug };
   }
 
   const now = new Date().toISOString();
@@ -55,7 +55,6 @@ export const register = async (input: RegisterInput): Promise<RegisterOutput> =>
     const record: AgentRecord = {
       name,
       task_description,
-      session_id: session_id ?? null,
       registered_at: now,
       last_active: now,
       pid: process.pid,

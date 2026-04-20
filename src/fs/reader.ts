@@ -106,14 +106,6 @@ export const tailMessages = async (
   return observed.filter((o): o is ObservedMessage => o !== null);
 };
 
-// Helper for `list_agents` tool: scrubs session_id from output.
-export const readAgentsPublic = async (
-  projectKey: string,
-): Promise<Array<Omit<Agent, 'session_id'>>> => {
-  const agents = await readAgents(projectKey);
-  return agents.map(({ session_id: _session_id, ...rest }) => rest);
-};
-
 // Exported for tests + debugging.
 export const projectPath = (projectKey: string): string => projectDir(projectKey);
 export const agentPath = (projectKey: string, name: string): string =>

@@ -32,16 +32,14 @@ describe('register', () => {
     expect(result.slug).toBeTruthy();
   });
 
-  test('session_id reconnect returns the same name', async () => {
+  test('re-registering in the same process returns the same name', async () => {
     const first = await register({
       project_key: projectKey,
       task_description: 'first time',
-      session_id: 'session-abc',
     });
     const second = await register({
       project_key: projectKey,
       task_description: 'reconnect',
-      session_id: 'session-abc',
     });
     expect(second.name).toBe(first.name);
 
@@ -50,34 +48,14 @@ describe('register', () => {
     expect(listed.agents[0]?.task_description).toBe('reconnect');
   });
 
-  test('different session_ids produce different agents', async () => {
-    const a = await register({
-      project_key: projectKey,
-      task_description: 'A',
-      session_id: 'session-a',
-    });
-    const b = await register({
-      project_key: projectKey,
-      task_description: 'B',
-      session_id: 'session-b',
-    });
-    expect(a.name).not.toBe(b.name);
-
-    const listed = await listAgents({ project_key: projectKey });
-    expect(listed.agents).toHaveLength(2);
-    const descriptions = listed.agents.map((a) => a.task_description).sort();
-    expect(descriptions).toEqual(['A', 'B']);
-  });
-
-  test('list_agents strips session_id from output', async () => {
+  test('list_agents does not expose pid', async () => {
     await register({
       project_key: projectKey,
       task_description: 'A',
-      session_id: 'secret-session-id',
     });
     const listed = await listAgents({ project_key: projectKey });
     for (const a of listed.agents) {
-      expect(a).not.toHaveProperty('session_id');
+      expect(a).not.toHaveProperty('pid');
     }
   });
 
@@ -109,7 +87,6 @@ describe('register', () => {
         {
           name: orphanName,
           task_description: 'crashed earlier',
-          session_id: 'stale-session',
           registered_at: now,
           last_active: now,
           pid: deadPid,
@@ -119,13 +96,9 @@ describe('register', () => {
       )}\n`,
     );
 
-    // New register, including the same session_id as the orphan. Sweep
-    // runs first, so dedupe won't find it — this is the behavior the
-    // plan calls out.
     const { name } = await register({
       project_key: projectKey,
       task_description: 'fresh start',
-      session_id: 'stale-session',
     });
     expect(name).not.toBe(orphanName);
 
@@ -135,17 +108,4 @@ describe('register', () => {
     expect(listed.agents[0]?.name).toBe(name);
   });
 
-  test('concurrent registrations produce unique names', async () => {
-    const results = await Promise.all(
-      Array.from({ length: 10 }, (_, i) =>
-        register({
-          project_key: projectKey,
-          task_description: `agent ${i}`,
-          session_id: `session-${i}`,
-        }),
-      ),
-    );
-    const names = results.map((r) => r.name);
-    expect(new Set(names).size).toBe(names.length);
-  });
 });

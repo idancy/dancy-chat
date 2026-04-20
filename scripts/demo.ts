@@ -31,12 +31,45 @@ const wait = (ms: number): Promise<void> =>
 
 // Imported AFTER env is set so config.rootDir() picks it up.
 const { App } = await import('../src/tui/App.js');
-const { register } = await import('../src/tools/register.js');
 const { sendMessage } = await import('../src/tools/sendMessage.js');
 const { receiveMessages } = await import('../src/tools/receiveMessages.js');
 const { acquireLease } = await import('../src/tools/acquireLease.js');
 const { releaseLease } = await import('../src/tools/releaseLease.js');
 const { listAgents } = await import('../src/tools/listAgents.js');
+const { writeExclusive } = await import('../src/fs/atomic.js');
+const { agentFile } = await import('../src/fs/paths.js');
+const { nameCandidates } = await import('../src/names/generate.js');
+
+// The real `register` tool enforces one-agent-per-process (dedupe by
+// pid), but this demo simulates three distinct agents from a single
+// script. Write agent records directly with distinct synthetic pids so
+// they survive sweepOrphans (current process pid is always treated as
+// alive) without collapsing under the register dedupe.
+const registerDemoAgent = async (
+  projectKey: string,
+  taskDescription: string,
+): Promise<{ name: string }> => {
+  const now = new Date().toISOString();
+  for (const name of nameCandidates()) {
+    const record = {
+      name,
+      task_description: taskDescription,
+      registered_at: now,
+      last_active: now,
+      pid: process.pid,
+    };
+    try {
+      await writeExclusive(
+        agentFile(projectKey, name),
+        `${JSON.stringify(record, null, 2)}\n`,
+      );
+      return { name };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  }
+  throw new Error('name space exhausted');
+};
 
 const projectKey = '/Users/thedancys/Documents/Code/money';
 const log = (msg: string): void => process.stdout.write(`  ${msg}\n`);
@@ -73,27 +106,24 @@ const send = async (m: Message): Promise<string> => {
 };
 
 section('Registering agents');
-const lead = await register({
-  project_key: projectKey,
-  task_description: 'Lead — epic lifecycle manager (epic/qi4-receive-blocking)',
-  session_id: 'demo-lead',
-});
+const lead = await registerDemoAgent(
+  projectKey,
+  'Lead — epic lifecycle manager (epic/qi4-receive-blocking)',
+);
 log(`lead:     ${lead.name}`);
 await wait(SHORT_PACE_MS);
 
-const alice = await register({
-  project_key: projectKey,
-  task_description: 'Worker — money-qi4 (receive_messages blocking support)',
-  session_id: 'demo-alice',
-});
+const alice = await registerDemoAgent(
+  projectKey,
+  'Worker — money-qi4 (receive_messages blocking support)',
+);
 log(`worker A: ${alice.name}`);
 await wait(SHORT_PACE_MS);
 
-const bob = await register({
-  project_key: projectKey,
-  task_description: 'Worker — money-30v (E2E test for add-row visibility)',
-  session_id: 'demo-bob',
-});
+const bob = await registerDemoAgent(
+  projectKey,
+  'Worker — money-30v (E2E test for add-row visibility)',
+);
 log(`worker B: ${bob.name}`);
 await wait(LONG_PACE_MS);
 

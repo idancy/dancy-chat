@@ -9,6 +9,28 @@ import { register } from '../../src/tools/register.js';
 import { sendMessage } from '../../src/tools/sendMessage.js';
 import { acquireLease } from '../../src/tools/acquireLease.js';
 import { receiveMessages } from '../../src/tools/receiveMessages.js';
+import { agentFile } from '../../src/fs/paths.js';
+
+// The register tool is now 1:1 with process.pid, so the second agent
+// in these two-agent scenarios is written directly instead of via
+// register().
+const writeAgentFile = async (
+  projectKey: string,
+  name: string,
+  taskDescription: string,
+): Promise<void> => {
+  const now = new Date().toISOString();
+  const record = {
+    name,
+    task_description: taskDescription,
+    registered_at: now,
+    last_active: now,
+    pid: process.pid,
+  };
+  const path = agentFile(projectKey, name);
+  await fs.mkdir(join(path, '..'), { recursive: true });
+  await fs.writeFile(path, `${JSON.stringify(record, null, 2)}\n`);
+};
 
 describe('TUI App', () => {
   let dir: string;
@@ -48,10 +70,8 @@ describe('TUI App', () => {
       project_key: projectKey,
       task_description: 'alice the lead',
     });
-    const bob = await register({
-      project_key: projectKey,
-      task_description: 'bob the worker',
-    });
+    const bob = { name: 'Bob-Pavlova' };
+    await writeAgentFile(projectKey, bob.name, 'bob the worker');
     await sendMessage({
       project_key: projectKey,
       from: alice.name,
@@ -94,10 +114,8 @@ describe('TUI App', () => {
       project_key: projectKey,
       task_description: 'alice the lead',
     });
-    const bob = await register({
-      project_key: projectKey,
-      task_description: 'bob the worker',
-    });
+    const bob = { name: 'Bob-Tiramisu' };
+    await writeAgentFile(projectKey, bob.name, 'bob the worker');
     await sendMessage({
       project_key: projectKey,
       from: alice.name,
